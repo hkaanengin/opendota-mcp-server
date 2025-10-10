@@ -3,7 +3,7 @@ import httpx
 import logging
 import os
 from typing import Dict, Any
-from classes import Player
+from .classes import Player
 
 # Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()

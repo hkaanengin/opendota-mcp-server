@@ -4,14 +4,14 @@ from typing import Optional, List, Dict, Any
 @dataclass
 class Player:
     account_id : int
-    personaname: Optional[str]
-    name: Optional[str]
-    avatarfull: Optional[str]
-    profileurl: Optional[str]
-    win_count: Optional[int]
-    lose_count: Optional[int]
-    win_rate: Optional[float]
-    fav_heroes: Optional[List[str]]
+    personaname: Optional[str] = None
+    name: Optional[str] = None
+    avatarfull: Optional[str] = None
+    profileurl: Optional[str] = None
+    win_count: Optional[int] = None
+    lose_count: Optional[int] = None
+    win_rate: Optional[float] = None
+    fav_heroes: Optional[List[str]] = None
     
     def calculate_win_rate(self):
         """Calculate win rate from win and lose counts"""

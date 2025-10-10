@@ -2,7 +2,7 @@ from fastmcp import FastMCP
 import httpx
 import logging
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .classes import Player
 
 # Setup logging
@@ -16,7 +16,40 @@ mcp = FastMCP("OpenDota API Server")
 OPENDOTA_BASE_URL = "https://api.opendota.com/api"
 http_client = httpx.Client(timeout=30.0)
 
-"https://api.opendota.com/api/search?q=Xinobillie"
+#"https://api.opendota.com/api/search?q=Xinobillie"
+
+player_cache : Dict[str, str] = {}
+
+async def get_account_id(player_name: str) -> Dict[str, str]:
+    """
+    Get account_id for a player, using cache if available.
+    
+    Args:
+        player_name: The player username
+        
+    Returns:
+        The account_id
+        
+    Raises:
+        ValueError: If player not found
+    """
+    player_name_lower = player_name.lower()
+    
+    if player_name_lower in player_cache:
+        return player_cache[player_name_lower]
+    
+    search_response = await http_client.get(f"{OPENDOTA_BASE_URL}/search?q={player_name}")
+    search_response.raise_for_status()
+    
+    search_results = search_response.json()
+    if not search_results:
+        raise ValueError(f"No players found matching '{player_name}'")
+    
+    account_id = search_results[0]['account_id']
+    player_cache[player_name_lower] = account_id
+    
+    return account_id
+
 @mcp.tool()
 async def get_player_info(player_name: str) -> Dict[str, Any]:
     """
@@ -35,19 +68,8 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
     """
     try:
         # Step 1: Search for player and get account_id
-        logger.info(f"Searching for player: {player_name}")
-        search_response = await http_client.get(f"{OPENDOTA_BASE_URL}/search?q={player_name}")
-        search_response.raise_for_status()
+        account_id = await get_account_id(player_name)
         
-        search_results = search_response.json()
-        if not search_results:
-            return {"error": f"No players found matching '{player_name}'"}
-        
-        # Get first result's account_id
-        account_id = search_results[0]['account_id']
-        logger.info(f"Found account_id: {account_id}")
-        
-        # Initialize Player object
         player = Player(account_id=account_id)
         
         # Step 2: Get player profile info
@@ -93,3 +115,122 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         logger.error(f"Error getting player info for '{player_name}': {e}")
         return {"error": str(e)}
 
+@mcp.tool()
+async def get_player_win_loss(
+    player_name: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    lane_role: Optional[int] = None,
+    hero_id: Optional[int] = None,
+    included_account_id: Optional[int] = None,
+    against_hero_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Get Dota 2 player complete win and loss statistics with optional filters.
+
+    This tool retrieves win and loss counts for a player, with various filters available.
+
+    Args:
+        player_name: The Dota 2 player name to search for.
+        limit: Number of matches to limit to.
+        offset: The offset for pagination.
+        lane_role: Filter by lane role; Top, Safe, Mid.
+        hero_id: Filter by hero ID.
+        included_account_id: Filter by included account ID.
+        against_hero_id: Filter by against hero ID.
+    
+    Returns:
+    Dictionary containing win and loss counts.
+    """
+
+    try:
+        # Search for player and get account_id
+        account_id = await get_account_id(player_name)
+        
+        params = {
+            k: v for k, v in {
+                'limit': limit,
+                'offset': offset,
+                'lane_role': lane_role,
+                'hero_id': hero_id,
+                'included_account_id': included_account_id,
+                'against_hero_id': against_hero_id
+            }.items() if v is not None
+        }
+        
+        wl_response = await http_client.get(
+            f"{OPENDOTA_BASE_URL}/players/{account_id}/wl",
+            params=params
+        )
+        wl_response.raise_for_status()
+        
+        return wl_response.json()
+        
+    except ValueError as e:
+        logger.error(f"Error getting value {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Error getting win/loss for '{player_name}': {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def get_heroes_played(
+    player_name: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    lane_role: Optional[int] = None,
+    hero_id: Optional[int] = None,
+    included_account_id: Optional[int] = None,
+    against_hero_id: Optional[int] = None,
+    having: Optional[int] = None
+    ) -> Dict[str, Any]:
+    """
+    Get Dota 2 player complete heroes played statistics with optional filters.
+
+    This tool retrieves heroes played counts for a player, with various filters available.
+
+    Args:
+        player_name: The Dota 2 player name to search for.
+        limit: Number of matches to limit to
+        offset: Number of matches to offset start by
+        lane_role: Filter by lane role; Top, Safe, Mid.
+        hero_id: Filter by hero ID.
+        included_account_id: Filter by included account ID.
+        against_hero_id: Filter by against hero ID.
+        having: The minimum number of games played, for filtering hero stats
+    
+    Returns:
+    Dictionary containing heroes played statistics.
+    """
+
+    try:
+        # Search for player and get account_id
+        account_id = await get_account_id(player_name)
+        
+        params = {
+            k: v for k, v in {
+                'limit': limit,
+                'offset': offset,
+                'lane_role': lane_role,
+                'hero_id': hero_id,
+                'included_account_id': included_account_id,
+                'against_hero_id': against_hero_id,
+                'having': having
+            }.items() if v is not None
+        }
+        
+        hp_response = await http_client.get(
+            f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes",
+            params=params
+        )
+        hp_response.raise_for_status()
+        
+        return hp_response.json()
+        
+    except ValueError as e:
+        logger.error(f"Error getting value {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Error getting heroes played for '{player_name}': {e}")
+        return {"error": str(e)}

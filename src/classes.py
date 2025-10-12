@@ -5,7 +5,6 @@ from typing import Optional, List, Dict, Any
 class Player:
     account_id : int
     personaname: Optional[str] = None
-    name: Optional[str] = None
     avatarfull: Optional[str] = None
     profileurl: Optional[str] = None
     win_count: Optional[int] = None

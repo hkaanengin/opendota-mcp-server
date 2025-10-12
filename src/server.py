@@ -2,7 +2,7 @@ from fastmcp import FastMCP
 import httpx
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from .classes import Player
 
 # Setup logging
@@ -81,7 +81,6 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         if 'profile' in profile_data:
             profile = profile_data['profile']
             player.personaname = profile.get('personaname')
-            player.name = profile.get('name')
             player.avatarfull = profile.get('avatarfull')
             player.profileurl = profile.get('profileurl')
         
@@ -122,8 +121,8 @@ async def get_player_win_loss(
     offset: Optional[int] = None,
     lane_role: Optional[int] = None,
     hero_id: Optional[int] = None,
-    included_account_id: Optional[int] = None,
-    against_hero_id: Optional[int] = None
+    included_account_id: Optional[List[int]] = None,
+    against_hero_id: Optional[List[int]] = None
 ) -> Dict[str, Any]:
     """
     Get Dota 2 player complete win and loss statistics with optional filters.
@@ -181,14 +180,12 @@ async def get_heroes_played(
     offset: Optional[int] = None,
     lane_role: Optional[int] = None,
     hero_id: Optional[int] = None,
-    included_account_id: Optional[int] = None,
-    against_hero_id: Optional[int] = None,
+    included_account_id: Optional[List[int]] = None,
+    against_hero_id: Optional[List[int]] = None,
     having: Optional[int] = None
     ) -> Dict[str, Any]:
     """
-    Get Dota 2 player complete heroes played statistics with optional filters.
-
-    This tool retrieves heroes played counts for a player, with various filters available.
+    Get heroes played statistics for the specified Dota 2 player with optional filters.
 
     Args:
         player_name: The Dota 2 player name to search for.
@@ -198,7 +195,7 @@ async def get_heroes_played(
         hero_id: Filter by hero ID.
         included_account_id: Filter by included account ID.
         against_hero_id: Filter by against hero ID.
-        having: The minimum number of games played, for filtering hero stats
+        having: The minimum number of games played.
     
     Returns:
     Dictionary containing heroes played statistics.
@@ -233,4 +230,69 @@ async def get_heroes_played(
         return {"error": str(e)}
     except Exception as e:
         logger.error(f"Error getting heroes played for '{player_name}': {e}")
+        return {"error": str(e)}
+
+
+@mcp.tool()
+async def get_player_peers(
+    player_name: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    included_account_id: Optional[List[int]] = None,
+    excluded_accout_id: Optional[List[int]] = None,
+    against_hero_id: Optional[List[int]] = None,
+    peers_count: Optional[int] = 5
+    ) -> Dict[str, Any]:
+    """
+    Get players who have played with the specified Dota 2 player, with optional filters.
+
+    Args:
+        player_name: The Dota 2 player name to search for.
+        limit: Number of matches to limit to
+        offset: Number of matches to offset start by
+        included_account_id: Filter by included account ID.
+        excluded_accout_id: Filter by excluded account ID.
+        against_hero_id: Filter by against hero ID.
+        peers_count: Number of peers(most matches played together) to return
+    
+    Returns:
+        Dictionary containing players who have played with the specified Dota 2 player.
+        If included_account_id is specified, returns stats for that specific peer(win, games, personnames).
+        Otherwise, returns stats for 5 peers withthe most matches played together.
+    """
+    try:
+        account_id = await get_account_id(player_name)
+        
+        params = {
+            k: v for k, v in {
+                'limit': limit,
+                'offset': offset,
+                'included_account_id': included_account_id,
+                'excluded_accout_id': excluded_accout_id,
+                'against_hero_id': against_hero_id,
+                'peers_count': peers_count
+            }.items() if v is not None
+        }
+
+        peers_response = await http_client.get(
+            f"{OPENDOTA_BASE_URL}/players/{account_id}/peers",
+            params = params)
+        peers_response.raise_for_status()
+        peers_data = peers_response.json()
+        
+        if included_account_id is not None: #If asked for multiple peers
+            if peers_data and len(peers_data) > 0:
+                return peers_data[0]
+            else:
+                return {"error": "No peer found"}
+        else:
+            return peers_data[:peers_count] #Returns the first 'peers_count' amount
+        
+
+        return peers_resp
+    except ValueError as e:
+        logger.error(f"Error getting value {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Error getting peers for '{player_name}': {e}")
         return {"error": str(e)}

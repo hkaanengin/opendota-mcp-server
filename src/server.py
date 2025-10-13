@@ -21,7 +21,7 @@ player_cache : Dict[str, str] = {
     "ömer": "149733355",
     "hotpocalypse": "79233435",
     "special one": "107409939",
-    "Xinobillie": "36872251",
+    "xinobillie": "36872251",
     "zøcnutex": "110249858"
 }
 
@@ -111,7 +111,7 @@ async def get_player_win_loss(
         player_name: The Dota 2 player name to search for.
         limit: Number of matches to limit to.
         offset: The offset for pagination.
-        lane_role: Filter by lane role; Top, Safe, Mid.
+        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
         hero_id: Filter by hero ID.
         included_account_id: Filter by included account ID.
         against_hero_id: Filter by against hero ID.
@@ -169,7 +169,7 @@ async def get_heroes_played(
         player_name: The Dota 2 player name to search for.
         limit: Number of matches to limit to
         offset: Number of matches to offset start by
-        lane_role: Filter by lane role; Top, Safe, Mid.
+        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
         hero_id: Filter by hero ID.
         included_account_id: Filter by included account ID.
         against_hero_id: Filter by against hero ID.
@@ -276,10 +276,86 @@ async def get_player_peers(
         logger.error(f"Error getting peers for '{player_name}': {e}")
         return {"error": str(e)}
 
+# ============================================================================
+# HERO ENDPOINTS
+# ============================================================================
+
+@mcp.tool()
+async def get_heroes() -> dict:
+    """
+    Get comprehensive list of all available heroes with their attributes and basic information.
+    Returns:
+        Array of hero objects, each containing:
+        - id (int): Hero ID
+        - localized_name (str): Hero display name (e.g. "Anti-Mage")
+        - primary_attr (str): Primary attribute (str/agi/int/all)
+        - attack_type (str): Melee or Ranged
+        - roles (array): Hero roles (Carry, Support, etc.)
+    """
+    gh_response = await fetch_api("/heroes")
+    gh_data = simplify_response(gh_response, remove_keys=["name", "legs"])
+    return await gh_data
+
+@mcp.tool()
+async def get_hero_matchups(hero_id: int) -> dict:
+    """
+    Get results against other heroes for a specific hero (win/loss rates, counter-picks).
+    
+    Args:
+        hero_id: The ID of the hero to get matchup data for
+    
+    Returns:
+        Array of matchup objects, each containing:
+        - hero_id (int): The opposing hero's ID
+        - hero_name (str): The opposing hero's name (auto-enriched)
+        - games_played (int): Number of games played against this hero
+        - wins (int): Number of wins against this hero
+        - losses (int): Number of losses against this hero
+        
+    Example: Use this to find which heroes counter or are countered by the specified hero.
+    A hero with high wins against another is considered a counter-pick.
+    """
+
+    #if hero_id is int/str, fetch from json(condition). Might need it.
+    data = await fetch_api(f"/heroes/{hero_id}/matchups")
+    return data
+
+@mcp.tool()
+async def get_hero_item_popularity(hero_id: int) -> dict:
+    """
+    Get item popularity for a hero categorized by game phase (start, early, mid, late).
+    
+    Args:
+        hero_id: The ID of the hero
+    
+    Returns:
+        Object with game phases (start_game_items, early_game_items, mid_game_items, late_game_items).
+        Each phase contains items with their popularity counts and win rates.
+        Example response: {
+            "<phase_name>": {
+                "<item_id>": "<popularity/count>"
+                "<item_id>": "<popularity/count>"
+            },
+            "<phase_name_2>": {
+                "<item_id>": "<popularity/count>"
+                "<item_id>": "<popularity/count>"
+            },
+            ...
+        }}
+        
+    Example: Use this to understand optimal item builds and timing for a hero based on 
+    professional game data.
+    """
+    #if hero_id is int/str, fetch from json(condition). Might need it.
+    itemp_data = await fetch_api(f"/heroes/{hero_id}/itemPopularity")
+    return await itemp_data
 
 
-
-
+@mcp.tool()
+async def get_hero_stats() -> dict: #to do
+    """Get aggregated statistics about hero performance in recent matches (win rates, pick rates)."""
+    hs_data = await fetch_api("/heroStats")
+    return hs_data
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -326,6 +402,30 @@ async def fetch_api(endpoint: str, params: dict = None) -> dict:
     response.raise_for_status()
     logger.info (f"Received response status: {response.status_code}: ")
     return response.json()
+
+def simplify_response(data: Any, remove_keys: List[str] = None) -> Any:
+    """
+    Simplify API response by removing unnecessary keys.
+    
+    Args:
+        data: The API response data
+        remove_keys: List of keys to remove from objects
+    """
+    if remove_keys is None:
+        remove_keys = []
+    
+    if isinstance(data, dict):
+        simplified = {k: v for k, v in data.items() if k not in remove_keys}
+
+        for key, value in simplified.items():
+            simplified[key] = simplify_response(value, remove_keys)
+        
+        return simplified
+    
+    elif isinstance(data, list):
+        return [simplify_response(item, remove_keys) for item in data]
+    
+    return data
 
 if __name__=='__main__':
     logger.info("Starting server...")

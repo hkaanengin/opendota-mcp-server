@@ -16,39 +16,14 @@ mcp = FastMCP("OpenDota API Server")
 OPENDOTA_BASE_URL = "https://api.opendota.com/api"
 http_client = httpx.Client(timeout=30.0)
 
-#"https://api.opendota.com/api/search?q=Xinobillie"
-
-player_cache : Dict[str, str] = {}
-
-async def get_account_id(player_name: str) -> Dict[str, str]:
-    """
-    Get account_id for a player, using cache if available.
-    
-    Args:
-        player_name: The player username
-        
-    Returns:
-        The account_id
-        
-    Raises:
-        ValueError: If player not found
-    """
-    player_name_lower = player_name.lower()
-    
-    if player_name_lower in player_cache:
-        return player_cache[player_name_lower]
-    
-    search_response = await http_client.get(f"{OPENDOTA_BASE_URL}/search?q={player_name}")
-    search_response.raise_for_status()
-    
-    search_results = search_response.json()
-    if not search_results:
-        raise ValueError(f"No players found matching '{player_name}'")
-    
-    account_id = search_results[0]['account_id']
-    player_cache[player_name_lower] = account_id
-    
-    return account_id
+player_cache : Dict[str, str] = {
+    "kürlo": "116856452",
+    "ömer": "149733355",
+    "hotpocalypse": "79233435",
+    "special one": "107409939",
+    "Xinobillie": "36872251",
+    "zøcnutex": "110249858"
+}
 
 @mcp.tool()
 async def get_player_info(player_name: str) -> Dict[str, Any]:
@@ -74,9 +49,10 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         
         # Step 2: Get player profile info
         logger.info(f"Fetching player profile for account_id: {account_id}")
-        profile_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}")
-        profile_response.raise_for_status()
-        profile_data = profile_response.json()
+        profile_data = await fetch_api(f"/players/{account_id}")
+        # profile_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}")
+        # profile_response.raise_for_status()
+        # profile_data = profile_response.json()
         
         if 'profile' in profile_data:
             profile = profile_data['profile']
@@ -86,9 +62,10 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         
         # Step 3: Get win/loss stats
         logger.info(f"Fetching win/loss stats for account_id: {account_id}")
-        wl_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}/wl")
-        wl_response.raise_for_status()
-        wl_data = wl_response.json()
+        wl_data = await fetch_api(f"/players/{account_id}/wl")
+        # wl_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}/wl")
+        # wl_response.raise_for_status()
+        # wl_data = wl_response.json()
         
         player.win_count = wl_data.get('win')
         player.lose_count = wl_data.get('lose')
@@ -96,9 +73,10 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         
         # Step 4: Get top 5 favorite heroes
         logger.info(f"Fetching favorite heroes for account_id: {account_id}")
-        heroes_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes")
-        heroes_response.raise_for_status()
-        heroes_data = heroes_response.json()
+        heroes_data = await fetch_api(f"/players/{account_id}/heroes")
+        # heroes_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes")
+        # heroes_response.raise_for_status()
+        # heroes_data = heroes_response.json()
         
         # Get first 5 hero IDs
         top_5_heroes = heroes_data[:5]
@@ -156,14 +134,14 @@ async def get_player_win_loss(
                 'against_hero_id': against_hero_id
             }.items() if v is not None
         }
+        wl_data = await fetch_api(f"/players/{account_id}/wl", params)
+        # wl_response = await http_client.get(
+        #     f"{OPENDOTA_BASE_URL}/players/{account_id}/wl",
+        #     params=params
+        # )
+        # wl_response.raise_for_status()
         
-        wl_response = await http_client.get(
-            f"{OPENDOTA_BASE_URL}/players/{account_id}/wl",
-            params=params
-        )
-        wl_response.raise_for_status()
-        
-        return wl_response.json()
+        return wl_data
         
     except ValueError as e:
         logger.error(f"Error getting value {e}")
@@ -217,13 +195,14 @@ async def get_heroes_played(
             }.items() if v is not None
         }
         
-        hp_response = await http_client.get(
-            f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes",
-            params=params
-        )
-        hp_response.raise_for_status()
+        hp_data = await fetch_api(f"/players/{account_id}/heroes", params)
+        # hp_response = await http_client.get(
+        #     f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes",
+        #     params=params
+        # )
+        # hp_response.raise_for_status()
         
-        return hp_response.json()
+        return hp_data
         
     except ValueError as e:
         logger.error(f"Error getting value {e}")
@@ -274,11 +253,13 @@ async def get_player_peers(
             }.items() if v is not None
         }
 
-        peers_response = await http_client.get(
-            f"{OPENDOTA_BASE_URL}/players/{account_id}/peers",
-            params = params)
-        peers_response.raise_for_status()
-        peers_data = peers_response.json()
+
+        peers_data = await fetch_api(f"/players/{account_id}/peers", params)
+        # peers_response = await http_client.get(
+        #     f"{OPENDOTA_BASE_URL}/players/{account_id}/peers",
+        #     params = params)
+        # peers_response.raise_for_status()
+        # peers_data = peers_response.json()
         
         if included_account_id is not None: #If asked for multiple peers
             if peers_data and len(peers_data) > 0:
@@ -288,11 +269,64 @@ async def get_player_peers(
         else:
             return peers_data[:peers_count] #Returns the first 'peers_count' amount
         
-
-        return peers_resp
     except ValueError as e:
         logger.error(f"Error getting value {e}")
         return {"error": str(e)}
     except Exception as e:
         logger.error(f"Error getting peers for '{player_name}': {e}")
         return {"error": str(e)}
+
+
+
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+async def get_account_id(player_name: str) -> str:
+    """
+    Get account_id for a player, using cache if available.
+    
+    Args:
+        player_name: The player username
+        
+    Returns:
+        The account_id
+        
+    Raises:
+        ValueError: If player not found
+    """
+    player_name_lower = player_name.lower()
+    
+    if player_name_lower in player_cache:
+        return player_cache[player_name_lower]
+    
+    search_response = await http_client.get(f"{OPENDOTA_BASE_URL}/search?q={player_name}")
+    search_response.raise_for_status()
+    
+    search_results = search_response.json()
+    if not search_results:
+        raise ValueError(f"No players found matching '{player_name}'")
+    
+    account_id = search_results[0]['account_id']
+    player_cache[player_name_lower] = account_id
+    
+    return account_id
+
+def build_query_params(arguments: dict, exclude_keys: list) -> dict:
+    """Build query parameters from arguments, excluding specified keys(account_id)."""
+    return {k: v for k, v in arguments.items() if k not in exclude_keys and v is not None}
+
+async def fetch_api(endpoint: str, params: dict = None) -> dict:
+    """Fetch data from OpenDota API."""
+    url = f"{OPENDOTA_BASE_URL}{endpoint}"
+    logger.info(f"Fetching data from {url}, with params: {params}")
+    response = await http_client.get(url, params=params)
+    response.raise_for_status()
+    logger.info (f"Received response status: {response.status_code}: ")
+    return response.json()
+
+if __name__=='__main__':
+    logger.info("Starting server...")
+    mcp.run()

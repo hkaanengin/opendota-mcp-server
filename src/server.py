@@ -159,6 +159,8 @@ async def get_heroes_played(
     lane_role: Optional[int] = None,
     hero_id: Optional[int] = None,
     included_account_id: Optional[List[int]] = None,
+    excluded_account_id: Optional[List[int]] = None,
+    with_hero_id: Optional[List[int]] = None,
     against_hero_id: Optional[List[int]] = None,
     having: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -171,12 +173,14 @@ async def get_heroes_played(
         offset: Number of matches to offset start by
         lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
         hero_id: Filter by hero ID.
-        included_account_id: Filter by included account ID.
-        against_hero_id: Filter by against hero ID.
+        included_account_id: Filter matches with this account ID.
+        excluded_account_id: Filter matches without this account.
+        with_hero_id: Hero IDs on the player's team.
+        against_hero_id: Hero IDs against the player's team.
         having: The minimum number of games played.
     
     Returns:
-    Dictionary containing heroes played statistics.
+    Dictionary containing heroes by a specified player with detail statistics.
     """
 
     try:
@@ -190,6 +194,8 @@ async def get_heroes_played(
                 'lane_role': lane_role,
                 'hero_id': hero_id,
                 'included_account_id': included_account_id,
+                'excluded_account_id': excluded_account_id,
+                'with_hero_id': with_hero_id,
                 'against_hero_id': against_hero_id,
                 'having': having
             }.items() if v is not None
@@ -217,8 +223,11 @@ async def get_player_peers(
     player_name: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
+    lane_role: Optional[int] = None,
+    hero_id: Optional[int] = None,
     included_account_id: Optional[List[int]] = None,
     excluded_accout_id: Optional[List[int]] = None,
+    with_hero_id: Optional[List[int]] = None,
     against_hero_id: Optional[List[int]] = None,
     peers_count: Optional[int] = 5
     ) -> Dict[str, Any]:
@@ -227,16 +236,19 @@ async def get_player_peers(
 
     Args:
         player_name: The Dota 2 player name to search for.
-        limit: Number of matches to limit to
-        offset: Number of matches to offset start by
+        limit: Number of matches to limit to.
+        offset: Number of matches to offset start by.
+        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle).
+        hero_id: Filter by specific hero ID
         included_account_id: Filter by included account ID.
         excluded_accout_id: Filter by excluded account ID.
+        with_hero_id: Hero IDs on the player's team.
         against_hero_id: Filter by against hero ID.
-        peers_count: Number of peers(most matches played together) to return
+        peers_count: Number of peers(players) to return.
     
     Returns:
         Dictionary containing players who have played with the specified Dota 2 player.
-        If included_account_id is specified, returns stats for that specific peer(win, games, personnames).
+        If included_account_id/s is/are specified, returns stats for that specific peer/s(win, games, personnames).
         Otherwise, returns stats for 5 peers withthe most matches played together.
     """
     try:
@@ -246,8 +258,11 @@ async def get_player_peers(
             k: v for k, v in {
                 'limit': limit,
                 'offset': offset,
+                'lane_role': lane_role,
+                'hero_id': hero_id,
                 'included_account_id': included_account_id,
                 'excluded_accout_id': excluded_accout_id,
+                'with_hero_id': with_hero_id,
                 'against_hero_id': against_hero_id,
                 'peers_count': peers_count
             }.items() if v is not None
@@ -275,6 +290,165 @@ async def get_player_peers(
     except Exception as e:
         logger.error(f"Error getting peers for '{player_name}': {e}")
         return {"error": str(e)}
+
+@mcp.tool()
+async def get_player_totals(
+    player_name: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    lane_role: Optional[int] = None,
+    hero_id: Optional[int] = None,
+    included_account_id: Optional[List[int]] = None,
+    excluded_accout_id: Optional[List[int]] = None,
+    with_hero_id: Optional[List[int]] = None,
+    against_hero_id: Optional[List[int]] = None,
+    having: Optional[int] = None,
+) -> dict:
+    """
+    Get aggregated statistics and totals for a player.
+    
+    Args:
+        player_name: The Dota 2 player name to search for.
+        limit: Number of matches to limit to
+        offset: Number of matches to offset start by
+        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
+        hero_id: Filter by hero ID.
+        included_account_id: Filter matches with this account ID.
+        excluded_account_id: Filter matches without this account.
+        with_hero_id: Hero IDs on the player's team.
+        against_hero_id: Hero IDs against the player's team.
+        having: The minimum number of games played.
+    
+    Example Response: {
+        {"field": "kills",
+        "n": 5,
+        "sum": 10},
+        {"field": "deaths",
+        "n": 12,
+        "sum": 10},
+        ....
+    }
+        field (string): The name of the statistical category being totaled (e.g., "kills", "deaths", "assists", "gold_per_min", "tower_kills", etc.)
+        n (integer): The number of matches/games where this statistic was recorded
+        sum (integer): The total/cumulative value of that statistic across all those matches
+    """
+    account_id = await get_account_id(player_name)
+
+    params = {k: v for k, v in locals().items() if k != 'account_id' and v is not None}
+    return await fetch_api(f"/players/{account_id}/totals", params)
+
+@mcp.tool()
+async def get_player_histograms(
+    player_name: str,
+    field: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    lane_role: Optional[int] = None,
+    hero_id: Optional[int] = None,
+    included_account_id: Optional[int] = None,
+    excluded_account_id: Optional[int] = None,
+    with_hero_id: Optional[int] = None,
+    against_hero_id: Optional[int] = None,
+    having: Optional[int] = None,
+) -> dict:
+    """
+    Get distribution of matches for a player in a specific statistical field.
+    
+    Args:
+        player_name: The Dota 2 player name to search for.
+        field: Statistical field, available histogram fields:
+        * kills, deaths, assists, hero_damage, hero_healing, gold_per_min, xp_per_min, last_hits, 
+        * lane_efficiency_pct, actions_per_min, level, pings, duration, comeback, stomp, loss
+        limit: Number of results to return
+        offset: Number of results to offset
+        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
+        hero_id: Filter by hero ID.
+        included_account_id: Filter matches with this account ID.
+        excluded_account_id: Filter matches without this account.
+        with_hero_id: Hero IDs on the player's team.
+        against_hero_id: Hero IDs against the player's team.
+        having: The minimum number of games played.
+    
+    Example Response: {
+        {"x": 154,
+        "games": 5,
+        "win": 0},
+        {"x": 616,
+        "games": 15,
+        "win": 11},
+        ....
+    }
+        x (integer): The value representing the bin/bucket (e.g., for gold_per_min, this could be 0-100, 100-200, 200-300, etc.)
+        games (integer): Total number of matches where the player's performance fell into this range
+        win (integer): Number of those matches that were won
+    """
+    account_id = await get_account_id(player_name)
+
+    params = {k: v for k, v in locals().items() if k not in ['account_id', 'field'] and v is not None}
+    return await fetch_api(f"/players/{account_id}/histograms/{field}", params)
+
+# ============================================================================
+# KEKSTRA ENDPOINTS
+# ============================================================================
+
+@mcp.tool()
+async def get_benchmarks(hero_id: str) -> dict:
+    """
+    Get statistical benchmarks for a hero (average performance metrics).
+    
+    Args:
+        hero_id: Hero ID
+    """
+    return await fetch_api("/benchmarks", {"hero_id": hero_id})
+
+
+@mcp.tool()
+async def get_records(field: str) -> dict:
+    """
+    Get top performances in a specific statistical field.
+    
+    Args:
+        field: Statistical field, available histogram fields:
+        * kills, deaths, assists, hero_damage, hero_healing, gold_per_min, xp_per_min, last_hits, 
+        * lane_efficiency_pct, actions_per_min, level, pings, duration, comeback, stomp, loss
+    """
+    return await fetch_api(f"/records/{field}")
+
+@mcp.tool()
+async def get_scenarios_lane_roles(
+    lane_role: Optional[str] = None,
+    hero_id: Optional[int] = None,
+) -> dict:
+    """
+    Get win rates for heroes in specific lane roles by range of time.
+    
+    Args:
+        lane_role: Lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
+        hero_id: Filter by hero ID
+
+    Example Response: {
+        "hero_id": 1,
+        "lane_role": 1,
+        'time': 900, #in seconds
+        "games": 21,
+        "win": 14
+    },
+    ...
+    """
+    params = {k: v for k, v in locals().items() if v is not None}
+    return await fetch_api("/scenarios/laneRoles", params)
+
+@mcp.tool()
+async def request_parse_match(match_id: int) -> dict:
+    """
+    Submit a new parse request for a specific match
+    
+    Args:
+        match_id: Match ID
+    """
+    request_resp = await http_client.post(f"{OPENDOTA_BASE_URL}/request/8509918901")
+    return request_resp.raise_for_status()
+
 
 # ============================================================================
 # HERO ENDPOINTS
@@ -356,6 +530,8 @@ async def get_hero_stats() -> dict: #to do
     """Get aggregated statistics about hero performance in recent matches (win rates, pick rates)."""
     hs_data = await fetch_api("/heroStats")
     return hs_data
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================

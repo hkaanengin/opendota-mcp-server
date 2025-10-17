@@ -3,7 +3,8 @@ import httpx
 import logging
 import os
 from typing import Dict, Any, Optional, List
-from .classes import Player
+from .classes import Player, RateLimiter
+import json
 
 # Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -14,7 +15,11 @@ logger = logging.getLogger("opendota-server")
 mcp = FastMCP("OpenDota API Server")
 
 OPENDOTA_BASE_URL = "https://api.opendota.com/api"
-http_client = httpx.Client(timeout=30.0)
+
+# Initialize rate limiter&HTTP client
+rate_limiter = RateLimiter(requests_per_minute=50)
+http_client: Optional[httpx.AsyncClient] = None
+
 
 player_cache : Dict[str, str] = {
     "kürlo": "116856452",
@@ -23,6 +28,13 @@ player_cache : Dict[str, str] = {
     "special one": "107409939",
     "xinobillie": "36872251",
     "zøcnutex": "110249858"
+}
+
+REFERENCE_DATA: Dict[str, Any] = {
+    "heroes": {},
+    "item_ids": {},
+    "hero_lore": {},
+    "aghs_desc": {},
 }
 
 @mcp.tool()
@@ -50,9 +62,6 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         # Step 2: Get player profile info
         logger.info(f"Fetching player profile for account_id: {account_id}")
         profile_data = await fetch_api(f"/players/{account_id}")
-        # profile_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}")
-        # profile_response.raise_for_status()
-        # profile_data = profile_response.json()
         
         if 'profile' in profile_data:
             profile = profile_data['profile']
@@ -63,9 +72,6 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         # Step 3: Get win/loss stats
         logger.info(f"Fetching win/loss stats for account_id: {account_id}")
         wl_data = await fetch_api(f"/players/{account_id}/wl")
-        # wl_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}/wl")
-        # wl_response.raise_for_status()
-        # wl_data = wl_response.json()
         
         player.win_count = wl_data.get('win')
         player.lose_count = wl_data.get('lose')
@@ -74,9 +80,6 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         # Step 4: Get top 5 favorite heroes
         logger.info(f"Fetching favorite heroes for account_id: {account_id}")
         heroes_data = await fetch_api(f"/players/{account_id}/heroes")
-        # heroes_response = await http_client.get(f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes")
-        # heroes_response.raise_for_status()
-        # heroes_data = heroes_response.json()
         
         # Get first 5 hero IDs
         top_5_heroes = heroes_data[:5]
@@ -135,11 +138,6 @@ async def get_player_win_loss(
             }.items() if v is not None
         }
         wl_data = await fetch_api(f"/players/{account_id}/wl", params)
-        # wl_response = await http_client.get(
-        #     f"{OPENDOTA_BASE_URL}/players/{account_id}/wl",
-        #     params=params
-        # )
-        # wl_response.raise_for_status()
         
         return wl_data
         
@@ -202,11 +200,6 @@ async def get_heroes_played(
         }
         
         hp_data = await fetch_api(f"/players/{account_id}/heroes", params)
-        # hp_response = await http_client.get(
-        #     f"{OPENDOTA_BASE_URL}/players/{account_id}/heroes",
-        #     params=params
-        # )
-        # hp_response.raise_for_status()
         
         return hp_data
         
@@ -226,7 +219,7 @@ async def get_player_peers(
     lane_role: Optional[int] = None,
     hero_id: Optional[int] = None,
     included_account_id: Optional[List[int]] = None,
-    excluded_accout_id: Optional[List[int]] = None,
+    excluded_account_id: Optional[List[int]] = None,
     with_hero_id: Optional[List[int]] = None,
     against_hero_id: Optional[List[int]] = None,
     peers_count: Optional[int] = 5
@@ -241,7 +234,7 @@ async def get_player_peers(
         lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle).
         hero_id: Filter by specific hero ID
         included_account_id: Filter by included account ID.
-        excluded_accout_id: Filter by excluded account ID.
+        excluded_account_id: Filter by excluded account ID.
         with_hero_id: Hero IDs on the player's team.
         against_hero_id: Filter by against hero ID.
         peers_count: Number of peers(players) to return.
@@ -261,7 +254,7 @@ async def get_player_peers(
                 'lane_role': lane_role,
                 'hero_id': hero_id,
                 'included_account_id': included_account_id,
-                'excluded_accout_id': excluded_accout_id,
+                'excluded_account_id': excluded_account_id,
                 'with_hero_id': with_hero_id,
                 'against_hero_id': against_hero_id,
                 'peers_count': peers_count
@@ -270,11 +263,6 @@ async def get_player_peers(
 
 
         peers_data = await fetch_api(f"/players/{account_id}/peers", params)
-        # peers_response = await http_client.get(
-        #     f"{OPENDOTA_BASE_URL}/players/{account_id}/peers",
-        #     params = params)
-        # peers_response.raise_for_status()
-        # peers_data = peers_response.json()
         
         if included_account_id is not None: #If asked for multiple peers
             if peers_data and len(peers_data) > 0:
@@ -299,7 +287,7 @@ async def get_player_totals(
     lane_role: Optional[int] = None,
     hero_id: Optional[int] = None,
     included_account_id: Optional[List[int]] = None,
-    excluded_accout_id: Optional[List[int]] = None,
+    excluded_account_id: Optional[List[int]] = None,
     with_hero_id: Optional[List[int]] = None,
     against_hero_id: Optional[List[int]] = None,
     having: Optional[int] = None,
@@ -388,7 +376,7 @@ async def get_player_histograms(
     return await fetch_api(f"/players/{account_id}/histograms/{field}", params)
 
 # ============================================================================
-# KEKSTRA ENDPOINTS
+# EXTRA ENDPOINTS
 # ============================================================================
 
 @mcp.tool()
@@ -438,6 +426,25 @@ async def get_scenarios_lane_roles(
     params = {k: v for k, v in locals().items() if v is not None}
     return await fetch_api("/scenarios/laneRoles", params)
 
+# ============================================================================
+# MATCH ENDPOINTS
+# ============================================================================
+
+@mcp.tool()
+async def get_recent_matches(
+    player_name: str
+) -> dict:
+    """
+    Get player's recent matches.
+    
+    Returns:
+        List of recent match objects with details like match_id, hero_id, kills, deaths, assists, etc.
+    """
+    account_id = await get_account_id(player_name)
+    
+    params = {k: v for k, v in locals().items() if k not in ['account_id', 'player_name'] and v is not None}
+    return await fetch_api(f"/players/{account_id}/recentMatches", params)
+
 @mcp.tool()
 async def request_parse_match(match_id: int) -> dict:
     """
@@ -445,10 +452,26 @@ async def request_parse_match(match_id: int) -> dict:
     
     Args:
         match_id: Match ID
+    
+    Returns:
+        Dictionary with parse request status
     """
-    request_resp = await http_client.post(f"{OPENDOTA_BASE_URL}/request/8509918901")
-    return request_resp.raise_for_status()
+    client = await get_http_client()
+    await rate_limiter.acquire()
+    
+    response = await client.post(f"{OPENDOTA_BASE_URL}/request/{match_id}")
+    response.raise_for_status()
+    return response.json()
 
+@mcp.tool()
+async def get_match_details(match_id: int) -> dict:
+    """
+    Get details for a specific match, used for analysing match data in detail.
+    
+    Args:
+        match_id: Match ID
+    """
+    return await fetch_api(f"/matches/{match_id}")
 
 # ============================================================================
 # HERO ENDPOINTS
@@ -468,7 +491,7 @@ async def get_heroes() -> dict:
     """
     gh_response = await fetch_api("/heroes")
     gh_data = simplify_response(gh_response, remove_keys=["name", "legs"])
-    return await gh_data
+    return gh_data
 
 @mcp.tool()
 async def get_hero_matchups(hero_id: int) -> dict:
@@ -489,8 +512,6 @@ async def get_hero_matchups(hero_id: int) -> dict:
     Example: Use this to find which heroes counter or are countered by the specified hero.
     A hero with high wins against another is considered a counter-pick.
     """
-
-    #if hero_id is int/str, fetch from json(condition). Might need it.
     data = await fetch_api(f"/heroes/{hero_id}/matchups")
     return data
 
@@ -520,13 +541,12 @@ async def get_hero_item_popularity(hero_id: int) -> dict:
     Example: Use this to understand optimal item builds and timing for a hero based on 
     professional game data.
     """
-    #if hero_id is int/str, fetch from json(condition). Might need it.
     itemp_data = await fetch_api(f"/heroes/{hero_id}/itemPopularity")
-    return await itemp_data
+    return itemp_data
 
 
 @mcp.tool()
-async def get_hero_stats() -> dict: #to do
+async def get_hero_stats() -> dict:
     """Get aggregated statistics about hero performance in recent matches (win rates, pick rates)."""
     hs_data = await fetch_api("/heroStats")
     return hs_data
@@ -554,32 +574,49 @@ async def get_account_id(player_name: str) -> str:
     if player_name_lower in player_cache:
         return player_cache[player_name_lower]
     
-    search_response = await http_client.get(f"{OPENDOTA_BASE_URL}/search?q={player_name}")
+    client = await get_http_client()
+    await rate_limiter.acquire()
+    
+    search_response = await client.get(f"{OPENDOTA_BASE_URL}/search?q={player_name}")
     search_response.raise_for_status()
     
     search_results = search_response.json()
     if not search_results:
         raise ValueError(f"No players found matching '{player_name}'")
     
-    account_id = search_results[0]['account_id']
+    account_id = str(search_results[0]['account_id'])
     player_cache[player_name_lower] = account_id
     
     return account_id
 
-def build_query_params(arguments: dict, exclude_keys: list) -> dict:
+def build_query_params(arguments: dict, exclude_keys: list) -> dict: #check this one
     """Build query parameters from arguments, excluding specified keys(account_id)."""
     return {k: v for k, v in arguments.items() if k not in exclude_keys and v is not None}
 
 async def fetch_api(endpoint: str, params: dict = None) -> dict:
-    """Fetch data from OpenDota API."""
+    """
+    Fetch data from OpenDota API with rate limiting.
+    
+    Args:
+        endpoint: API endpoint path
+        params: Query parameters
+    
+    Returns:
+        JSON response from API
+    """
+    client = await get_http_client()
+    await rate_limiter.acquire()
+    
     url = f"{OPENDOTA_BASE_URL}{endpoint}"
     logger.info(f"Fetching data from {url}, with params: {params}")
-    response = await http_client.get(url, params=params)
+    
+    response = await client.get(url, params=params)
     response.raise_for_status()
-    logger.info (f"Received response status: {response.status_code}: ")
+    
+    logger.info(f"Received response status: {response.status_code}")
     return response.json()
 
-def simplify_response(data: Any, remove_keys: List[str] = None) -> Any:
+def simplify_response(data: Any, remove_keys: List[str] = None) -> Any: #check this one
     """
     Simplify API response by removing unnecessary keys.
     
@@ -603,6 +640,49 @@ def simplify_response(data: Any, remove_keys: List[str] = None) -> Any:
     
     return data
 
+async def get_http_client() -> httpx.AsyncClient:
+    """Get or create the async HTTP client."""
+    global http_client
+    if http_client is None:
+        http_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        )
+    return http_client
+
+async def cleanup_http_client():
+    """Close the HTTP client on shutdown."""
+    global http_client
+    if http_client is not None:
+        await http_client.aclose()
+        http_client = None
+        logger.info("HTTP client closed")
+
+def load_json(filepath: str) -> Dict[str, Any]:
+    """Load JSON file from disk."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading {filepath}: {e}")
+        return {}
+
+async def load_reference_data():
+    """Load reference data from JSON files."""
+    for const in ['heroes', 'item_ids', 'hero_lore', 'aghs_desc']:
+        REFERENCE_DATA[const] = load_json(f"./constants/{const}.json")
+    logger.info("Reference data loaded")
+
 if __name__=='__main__':
-    logger.info("Starting server...")
-    mcp.run()
+    logger.info("Starting OpenDota MCP server...")
+    
+    # Load reference data on startup
+    import asyncio
+    asyncio.run(load_reference_data())
+    
+    try:
+        mcp.run()
+    finally:
+        # Cleanup on shutdown
+        asyncio.run(cleanup_http_client())
+        logger.info("Server shutdown complete")

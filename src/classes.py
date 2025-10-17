@@ -1,5 +1,7 @@
 from dataclasses import dataclass, asdict
 from typing import Optional, List, Dict, Any
+import asyncio
+from datetime import datetime, timedelta
 
 @dataclass
 class Player:
@@ -23,11 +25,40 @@ class Player:
         """Convert Player to dictionary, removing None values"""
         return {k: v for k, v in asdict(self).items() if v is not None}
 
-@dataclass
-class Hero:
-    id: int
-    name: str
-    localized_name: str
-    primary_attr: str
-    attack_type: str
-    roles: List[str]
+# Rate limiter configuration
+class RateLimiter:
+    """
+    Simple rate limiter for OpenDota API.
+    OpenDota has rate limits: 60 requests per minute for anonymous users.
+    """
+    def __init__(self, requests_per_minute: int = 50):
+        """
+        Args:
+            requests_per_minute: Maximum requests allowed per minute (default 50 to be safe)
+        """
+        self.requests_per_minute = requests_per_minute
+        self.requests = []
+        self.lock = asyncio.Lock()
+    
+    async def acquire(self):
+        """Wait if necessary to respect rate limits."""
+        async with self.lock:
+            now = datetime.now()
+            # Remove requests older than 1 minute
+            self.requests = [req_time for req_time in self.requests 
+                           if now - req_time < timedelta(minutes=1)]
+            
+            if len(self.requests) >= self.requests_per_minute:
+                # Calculate wait time
+                oldest_request = self.requests[0]
+                wait_time = 60 - (now - oldest_request).total_seconds()
+                if wait_time > 0:
+                    print(f"Rate limit reached. Waiting {wait_time:.2f} seconds...")
+                    await asyncio.sleep(wait_time)
+                    # Clean up again after waiting
+                    now = datetime.now()
+                    self.requests = [req_time for req_time in self.requests 
+                                   if now - req_time < timedelta(minutes=1)]
+            
+            # Add current request
+            self.requests.append(now)

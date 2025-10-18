@@ -1,7 +1,7 @@
 """
 HTTP client and rate limiter management
 """
-import httpx # type: ignore
+import httpx
 import logging
 from typing import Optional
 from .classes import RateLimiter

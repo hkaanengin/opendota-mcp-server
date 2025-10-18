@@ -3,7 +3,7 @@ Miscellaneous tools (benchmarks, records, scenarios)
 """
 from typing import Optional, Union
 import logging
-from fastmcp import FastMCP #type: ignore
+from fastmcp import FastMCP
 from ..client import fetch_api
 from ..resolvers import resolve_hero, resolve_lane, resolve_stat_field
 
@@ -78,7 +78,11 @@ def register_misc_tools(mcp: FastMCP):
             hero_id = await resolve_hero(hero_id)
             
             params = {k: v for k, v in {'lane_role': lane_role, 'hero_id': hero_id}.items() if v is not None}
-            return await fetch_api("/scenarios/laneRoles", params)
+            result = await fetch_api("/scenarios/laneRoles", params)
+            # Wrap list response in a dict
+            if isinstance(result, list):
+                return {"scenarios": result}
+            return result
             
         except ValueError as e:
             logger.error(f"Error resolving parameter: {e}")

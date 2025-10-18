@@ -2,9 +2,9 @@
 Player statistics tools
 """
 from typing import Dict, Any, Optional, List, Union
-import httpx #type: ignore
+import httpx
 import logging
-from fastmcp import FastMCP #type: ignore
+from fastmcp import FastMCP
 from ..classes import Player
 from ..client import fetch_api
 from ..utils import get_account_id
@@ -194,8 +194,12 @@ def register_player_tools(mcp: FastMCP):
                 }.items() if v is not None
             }
             
-            hp_data = await fetch_api(f"/players/{account_id}/heroes", params)
-            return hp_data
+            result = await fetch_api(f"/players/{account_id}/heroes", params)
+            
+            # Wrap list response in a dict
+            if isinstance(result, list):
+                return {"heroes": result}
+            return result
             
         except ValueError as e:
             logger.error(f"Error resolving parameter: {e}")
@@ -332,8 +336,11 @@ def register_player_tools(mcp: FastMCP):
                     'having': having
                 }.items() if v is not None
             }
-            
-            return await fetch_api(f"/players/{account_id}/totals", params)
+            result = await fetch_api(f"/players/{account_id}/totals", params)
+            # Wrap list response in a dict
+            if isinstance(result, list):
+                return {"player_totals": result}
+            return result
             
         except ValueError as e:
             logger.error(f"Error resolving parameter: {e}")
@@ -414,7 +421,12 @@ def register_player_tools(mcp: FastMCP):
                 }.items() if v is not None
             }
             
-            return await fetch_api(f"/players/{account_id}/histograms/{field}", params)
+            result = await fetch_api(f"/players/{account_id}/histograms/{field}", params)
+            
+            # Wrap list response in a dict
+            if isinstance(result, list):
+                return {"histograms": result}
+            return result
             
         except ValueError as e:
             logger.error(f"Error resolving parameter: {e}")

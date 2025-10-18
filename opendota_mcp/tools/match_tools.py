@@ -2,7 +2,7 @@
 Match-related tools
 """
 import logging
-from fastmcp import FastMCP # type: ignore
+from fastmcp import FastMCP
 from ..client import fetch_api, get_http_client, rate_limiter
 from ..config import OPENDOTA_BASE_URL
 from ..utils import get_account_id

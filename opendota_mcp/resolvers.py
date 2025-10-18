@@ -25,10 +25,13 @@ async def resolve_hero(hero: Optional[Union[int, str]]) -> Optional[int]:
     if hero is None:
         return None
     if isinstance(hero, int):
+        logger.debug(f"Hero already an ID: {hero}")
         return hero
     
     # Import here to avoid circular dependency
     from .tools.lookup_tools import get_hero_id_by_name
+    
+    logger.debug(f"Resolving hero name: '{hero}'")
     
     # It's a string, look it up with fuzzy matching
     result = await get_hero_id_by_name(hero)
@@ -38,7 +41,9 @@ async def resolve_hero(hero: Optional[Union[int, str]]) -> Optional[int]:
             raise ValueError(f"Hero '{hero}' not found. Did you mean: {', '.join(suggestions[:3])}?")
         raise ValueError(f"Hero '{hero}' not found")
     
-    return result["hero_id"]
+    hero_id = result["hero_id"]
+    logger.info(f"RESOLVED: hero '{hero}' -> ID {hero_id} ({result.get('localized_name')})")
+    return hero_id
 
 
 async def resolve_hero_list(heroes: Optional[Union[int, str, List[Union[int, str]]]]) -> Optional[Union[int, List[int]]]:
@@ -81,11 +86,14 @@ async def resolve_lane(lane: Optional[Union[int, str]]) -> Optional[int]:
     if isinstance(lane, int):
         # Validate range
         if 1 <= lane <= 4:
+            logger.debug(f"Lane already an ID: {lane}")
             return lane
         raise ValueError(f"Lane role must be between 1-4, got {lane}")
     
     # Import here to avoid circular dependency
     from .tools.lookup_tools import convert_lane_name_to_id
+    
+    logger.debug(f"Resolving lane name: '{lane}'")
     
     # It's a string, look it up
     result = await convert_lane_name_to_id(lane)
@@ -93,7 +101,9 @@ async def resolve_lane(lane: Optional[Union[int, str]]) -> Optional[int]:
         valid_options = result.get("valid_options", [])
         raise ValueError(f"Lane '{lane}' not recognized. Valid options: {', '.join(valid_options)}")
     
-    return result["lane_role"]
+    lane_id = result["lane_role"]
+    logger.info(f"RESOLVED: lane '{lane}' -> ID {lane_id} ({result.get('description')})")
+    return lane_id
 
 
 async def resolve_account_ids(account_ids: Optional[Union[str, List[str]]]) -> Optional[List[int]]:
@@ -148,22 +158,30 @@ def resolve_stat_field(field: str) -> str:
     if not field:
         raise ValueError("Field cannot be empty")
     
+    logger.debug(f"Resolving stat field: '{field}'")
+    
     # Normalize input: lowercase, remove extra spaces, underscores to spaces
     field_normalized = field.lower().strip().replace("_", " ").replace("-", " ")
     
     # Try exact match first (after normalization)
     field_key = field_normalized.replace(" ", "_")
     if field_key in VALID_STAT_FIELDS:
-        return VALID_STAT_FIELDS[field_key]
+        result = VALID_STAT_FIELDS[field_key]
+        logger.info(f"RESOLVED: stat field '{field}' -> '{result}'")
+        return result
     
     # Try lookup with original (spaces removed)
     field_nospace = field_normalized.replace(" ", "")
     if field_nospace in VALID_STAT_FIELDS:
-        return VALID_STAT_FIELDS[field_nospace]
+        result = VALID_STAT_FIELDS[field_nospace]
+        logger.info(f"RESOLVED: stat field '{field}' -> '{result}'")
+        return result
     
     # Try lookup with spaces
     if field_normalized in VALID_STAT_FIELDS:
-        return VALID_STAT_FIELDS[field_normalized]
+        result = VALID_STAT_FIELDS[field_normalized]
+        logger.info(f"RESOLVED: stat field '{field}' -> '{result}'")
+        return result
     
     # Fuzzy matching: check if field is similar to any valid field
     from difflib import get_close_matches
@@ -174,7 +192,7 @@ def resolve_stat_field(field: str) -> str:
     if close_matches:
         best_match = close_matches[0]
         canonical_field = VALID_STAT_FIELDS[best_match]
-        logger.warning(f"Field '{field}' not exact match, using '{canonical_field}' (matched '{best_match}')")
+        logger.warning(f"WARNING: Field '{field}' fuzzy matched to '{canonical_field}' (via '{best_match}')")
         return canonical_field
     
     # No match found

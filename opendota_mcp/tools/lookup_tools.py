@@ -4,7 +4,7 @@ Lookup tools for converting natural language to IDs
 from typing import Dict, Any, List
 from difflib import SequenceMatcher
 import logging
-from fastmcp import FastMCP #type: ignore
+from fastmcp import FastMCP
 from ..client import fetch_api
 from ..config import LANE_MAPPING, LANE_DESCRIPTIONS, REFERENCE_DATA
 

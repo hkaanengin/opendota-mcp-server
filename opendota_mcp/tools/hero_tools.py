@@ -3,7 +3,7 @@ Hero-related tools
 """
 from typing import Dict, Union
 import logging
-from fastmcp import FastMCP # type: ignore
+from fastmcp import FastMCP
 from ..client import fetch_api
 from ..utils import simplify_response
 from ..resolvers import resolve_hero
@@ -46,7 +46,11 @@ def register_hero_tools(mcp: FastMCP):
         """
         try:
             hero_id = await resolve_hero(hero_id)
-            return await fetch_api(f"/heroes/{hero_id}/matchups")
+            result = await fetch_api(f"/heroes/{hero_id}/matchups")
+            # Wrap list response in a dict
+            if isinstance(result, list):
+                return {"matchups": result}
+            return result
         except ValueError as e:
             logger.error(f"Error resolving hero: {e}")
             return {"error": str(e)}

@@ -336,7 +336,7 @@ def register_player_tools(mcp: FastMCP):
                     'having': having
                 }.items() if v is not None
             }
-            result = await fetch_api("/players/{account_id}/totals", params)
+            result = await fetch_api(f"/players/{account_id}/totals", params)
             # Wrap list response in a dict
             if isinstance(result, list):
                 return {"player_totals": result}

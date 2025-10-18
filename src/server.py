@@ -2,9 +2,10 @@ from fastmcp import FastMCP
 import httpx
 import logging
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from .classes import Player, RateLimiter
 import json
+from difflib import SequenceMatcher
 
 # Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -37,6 +38,309 @@ REFERENCE_DATA: Dict[str, Any] = {
     "aghs_desc": {},
 }
 
+# ============================================================================
+# LOOKUP TOOLS (Exposed to LLM)
+# ============================================================================
+
+@mcp.tool()
+async def get_hero_id_by_name(hero_name: str) -> Dict[str, Any]:
+    """
+    Find a hero's ID by name with fuzzy matching for typos and case variations.
+    Use this when you need to convert hero names to IDs.
+    
+    Args:
+        hero_name: The hero name (handles typos, case variations, spaces)
+    
+    Returns:
+        Dictionary with hero_id and hero name, or suggestions if not found
+    
+    Examples:
+        - "Rubick", "rubick", "RUBICK", "rubik" all return Rubick's ID
+        - "Anti-Mage", "anti mage", "antimage" all work
+        - "rbick" returns Rubick with fuzzy matching
+    """
+    def normalize_name(name: str) -> str:
+        """Remove spaces, hyphens, apostrophes, make lowercase"""
+        return name.lower().replace(" ", "").replace("-", "").replace("'", "")
+    
+    def similarity(a: str, b: str) -> float:
+        """Calculate similarity ratio between two strings"""
+        return SequenceMatcher(None, a, b).ratio()
+    
+    heroes = await fetch_api("/heroes")
+    hero_name_normalized = normalize_name(hero_name)
+    
+    # Step 1: Try exact match (normalized)
+    for hero in heroes:
+        hero_normalized = normalize_name(hero['localized_name'])
+        if hero_normalized == hero_name_normalized:
+            return {
+                "hero_id": hero['id'],
+                "localized_name": hero['localized_name'],
+                "match_type": "exact"
+            }
+    
+    # Step 2: Try fuzzy match (typos, close matches)
+    matches = []
+    for hero in heroes:
+        hero_normalized = normalize_name(hero['localized_name'])
+        sim = similarity(hero_name_normalized, hero_normalized)
+        
+        # If similarity is high enough (>= 0.8), it's probably the right hero
+        if sim >= 0.8:
+            matches.append({
+                "hero_id": hero['id'],
+                "localized_name": hero['localized_name'],
+                "similarity": sim
+            })
+    
+    # Sort by similarity
+    matches.sort(key=lambda x: x['similarity'], reverse=True)
+    
+    if matches:
+        best_match = matches[0]
+        if best_match['similarity'] >= 0.9:
+            # Very confident match
+            return {
+                "hero_id": best_match['hero_id'],
+                "localized_name": best_match['localized_name'],
+                "match_type": "fuzzy",
+                "confidence": "high"
+            }
+        else:
+            # Somewhat confident, but show alternatives
+            return {
+                "hero_id": best_match['hero_id'],
+                "localized_name": best_match['localized_name'],
+                "match_type": "fuzzy",
+                "confidence": "medium",
+                "alternatives": [m['localized_name'] for m in matches[:3]]
+            }
+    
+    # Step 3: No good matches, suggest similar heroes
+    suggestions = []
+    for hero in heroes:
+        hero_normalized = normalize_name(hero['localized_name'])
+        sim = similarity(hero_name_normalized, hero_normalized)
+        if sim >= 0.5:  # Lower threshold for suggestions
+            suggestions.append({
+                "name": hero['localized_name'],
+                "similarity": sim
+            })
+    
+    suggestions.sort(key=lambda x: x['similarity'], reverse=True)
+    
+    return {
+        "error": f"Hero '{hero_name}' not found",
+        "suggestions": [s['name'] for s in suggestions[:5]]
+    }
+
+@mcp.tool()
+async def convert_lane_name_to_id(lane_name: str) -> Dict[str, Any]:
+    """
+    Convert lane/position names to lane_role IDs.
+    Use this when you need to convert natural language lanes to IDs.
+    
+    Args:
+        lane_name: Lane name like "mid", "safe lane", "offlane", "jungle", "carry", "pos 1", etc.
+    
+    Returns:
+        Dictionary with lane_role ID and description
+    
+    Examples:
+        - "mid", "midlane", "pos 2" all return lane_role 2
+        - "carry", "safe lane", "pos 1" all return lane_role 1
+        - "offlane", "offline", "pos 3" all return lane_role 3
+    """
+    lane_name_lower = lane_name.lower().strip()
+    
+    lane_mapping = {
+        # Safe Lane / Carry / Position 1
+        "safe lane": 1, "safelane": 1, "safe": 1, "carry": 1, 
+        "pos 1": 1, "position 1": 1, "pos1": 1, "1": 1,
+        # Mid Lane / Position 2
+        "mid": 2, "midlane": 2, "mid lane": 2, "middle": 2, 
+        "pos 2": 2, "position 2": 2, "pos2": 2, "2": 2,
+        # Off Lane / Offlane / Position 3
+        "off lane": 3, "offlane": 3, "off": 3, "hard lane": 3, "hardlane": 3,
+        "pos 3": 3, "position 3": 3, "pos3": 3, "3": 3,
+        # Jungle / Position 4
+        "jungle": 4, "jungler": 4, "roaming": 4, "roam": 4,
+        "pos 4": 4, "position 4": 4, "pos4": 4, "4": 4,
+    }
+    
+    descriptions = {
+        1: "Safe Lane (Carry/Position 1)",
+        2: "Mid Lane (Position 2)",
+        3: "Off Lane (Offlane/Position 3)",
+        4: "Jungle/Roaming (Position 4)"
+    }
+    
+    if lane_name_lower in lane_mapping:
+        lane_role = lane_mapping[lane_name_lower]
+        return {
+            "lane_role": lane_role,
+            "description": descriptions[lane_role]
+        }
+    
+    return {
+        "error": f"Lane '{lane_name}' not recognized",
+        "valid_options": ["mid", "safe lane", "offlane", "jungle", "pos 1-4"]
+    }
+
+@mcp.tool()
+async def search_heroes(query: str) -> List[Dict[str, Any]]:
+    """
+    Search for heroes by name or partial name. Returns multiple matching heroes.
+    Use this for general hero searches or when uncertain about exact hero name.
+    
+    Args:
+        query: Hero name or partial name to search for
+    
+    Returns:
+        List of matching heroes with their IDs, names, and roles
+    
+    Example:
+        - "mag" returns Magnus, Anti-Mage, etc.
+        - "support" returns heroes with support role
+    """
+    query_lower = query.lower()
+    heroes = await fetch_api("/heroes")
+    
+    matches = []
+    for hero in heroes:
+        # Match by name
+        if query_lower in hero['localized_name'].lower():
+            matches.append({
+                "hero_id": hero['id'],
+                "name": hero['localized_name'],
+                "primary_attr": hero.get('primary_attr'),
+                "roles": hero.get('roles', [])
+            })
+        # Match by role
+        elif any(query_lower in role.lower() for role in hero.get('roles', [])):
+            matches.append({
+                "hero_id": hero['id'],
+                "name": hero['localized_name'],
+                "primary_attr": hero.get('primary_attr'),
+                "roles": hero.get('roles', [])
+            })
+    
+    return matches[:10]  # Return top 10 matches
+
+# ============================================================================
+# INTERNAL RESOLVER FUNCTIONS (Not exposed to LLM)
+# ============================================================================
+
+async def _resolve_hero(hero: Optional[Union[int, str]]) -> Optional[int]:
+    """
+    Internal: Resolve hero name or ID to hero ID.
+    
+    Args:
+        hero: Hero ID (int) or hero name (str)
+    
+    Returns:
+        Hero ID (int) or None
+    
+    Raises:
+        ValueError: If hero name is not found
+    """
+    if hero is None:
+        return None
+    if isinstance(hero, int):
+        return hero
+    
+    # It's a string, look it up with fuzzy matching
+    result = await get_hero_id_by_name(hero)
+    if "error" in result:
+        suggestions = result.get("suggestions", [])
+        if suggestions:
+            raise ValueError(f"Hero '{hero}' not found. Did you mean: {', '.join(suggestions[:3])}?")
+        raise ValueError(f"Hero '{hero}' not found")
+    
+    return result["hero_id"]
+
+async def _resolve_hero_list(heroes: Optional[Union[int, str, List[Union[int, str]]]]) -> Optional[Union[int, List[int]]]:
+    """
+    Internal: Resolve hero names/IDs to hero IDs (supports lists).
+    
+    Args:
+        heroes: Single hero ID/name or list of hero IDs/names
+    
+    Returns:
+        Single hero ID or list of hero IDs
+    """
+    if heroes is None:
+        return None
+    
+    if isinstance(heroes, list):
+        resolved = []
+        for hero in heroes:
+            resolved.append(await _resolve_hero(hero))
+        return resolved
+    else:
+        return await _resolve_hero(heroes)
+
+async def _resolve_lane(lane: Optional[Union[int, str]]) -> Optional[int]:
+    """
+    Internal: Resolve lane name or ID to lane_role ID.
+    
+    Args:
+        lane: Lane role ID (int) or lane name (str)
+    
+    Returns:
+        Lane role ID (int) or None
+    
+    Raises:
+        ValueError: If lane name is not recognized
+    """
+    if lane is None:
+        return None
+    if isinstance(lane, int):
+        # Validate range
+        if 1 <= lane <= 4:
+            return lane
+        raise ValueError(f"Lane role must be between 1-4, got {lane}")
+    
+    # It's a string, look it up
+    result = await convert_lane_name_to_id(lane)
+    if "error" in result:
+        valid_options = result.get("valid_options", [])
+        raise ValueError(f"Lane '{lane}' not recognized. Valid options: {', '.join(valid_options)}")
+    
+    return result["lane_role"]
+
+async def _resolve_account_ids(account_ids: Optional[Union[str, List[str]]]) -> Optional[List[int]]:
+    """
+    Internal: Resolve player names to account IDs (supports lists).
+    
+    Args:
+        account_ids: Single player name or list of player names or account IDs
+    
+    Returns:
+        List of account IDs
+    """
+    if account_ids is None:
+        return None
+    
+    if not isinstance(account_ids, list):
+        account_ids = [account_ids]
+    
+    resolved = []
+    for account_id in account_ids:
+        if isinstance(account_id, int):
+            resolved.append(account_id)
+        else:
+            # It's a string (player name), look it up
+            resolved_id = await get_account_id(str(account_id))
+            resolved.append(int(resolved_id))
+    
+    return resolved
+
+# ============================================================================
+# PLAYER STATS TOOLS (With Smart Resolution)
+# ============================================================================
+
 @mcp.tool()
 async def get_player_info(player_name: str) -> Dict[str, Any]:
     """
@@ -54,12 +358,9 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         Dictionary containing complete player information
     """
     try:
-        # Step 1: Search for player and get account_id
         account_id = await get_account_id(player_name)
-        
         player = Player(account_id=account_id)
         
-        # Step 2: Get player profile info
         logger.info(f"Fetching player profile for account_id: {account_id}")
         profile_data = await fetch_api(f"/players/{account_id}")
         
@@ -69,7 +370,6 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
             player.avatarfull = profile.get('avatarfull')
             player.profileurl = profile.get('profileurl')
         
-        # Step 3: Get win/loss stats
         logger.info(f"Fetching win/loss stats for account_id: {account_id}")
         wl_data = await fetch_api(f"/players/{account_id}/wl")
         
@@ -77,11 +377,9 @@ async def get_player_info(player_name: str) -> Dict[str, Any]:
         player.lose_count = wl_data.get('lose')
         player.calculate_win_rate()
         
-        # Step 4: Get top 5 favorite heroes
         logger.info(f"Fetching favorite heroes for account_id: {account_id}")
         heroes_data = await fetch_api(f"/players/{account_id}/heroes")
         
-        # Get first 5 hero IDs
         top_5_heroes = heroes_data[:5]
         player.fav_heroes = [hero['hero_id'] for hero in top_5_heroes if 'hero_id' in hero]
         
@@ -100,32 +398,47 @@ async def get_player_win_loss(
     player_name: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
-    lane_role: Optional[int] = None,
-    hero_id: Optional[int] = None,
-    included_account_id: Optional[List[int]] = None,
-    against_hero_id: Optional[List[int]] = None
+    lane_role: Optional[Union[int, str]] = None,
+    hero_id: Optional[Union[int, str]] = None,
+    included_account_id: Optional[Union[str, List[str]]] = None,
+    against_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None
 ) -> Dict[str, Any]:
     """
-    Get Dota 2 player complete win and loss statistics with optional filters.
-
-    This tool retrieves win and loss counts for a player, with various filters available.
+    Get Dota 2 player win/loss statistics with optional filters.
+    
+    Supports both IDs and natural language for flexible querying.
 
     Args:
         player_name: The Dota 2 player name to search for.
         limit: Number of matches to limit to.
         offset: The offset for pagination.
-        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
-        hero_id: Filter by hero ID.
-        included_account_id: Filter by included account ID.
-        against_hero_id: Filter by against hero ID.
+        lane_role: Lane filter. Accepts:
+            - Integer: 1 (Safe), 2 (Mid), 3 (Off), 4 (Jungle)
+            - String: "mid", "safe lane", "offlane", "jungle", "carry", "pos 1", etc.
+        hero_id: Hero filter. Accepts:
+            - Integer: Hero ID (e.g., 86 for Rubick)
+            - String: Hero name (e.g., "Rubick", "Anti-Mage")
+        included_account_id: Filter by teammate. Accepts:
+            - String: Player name (e.g., "hotpocalypse")
+            - List[String]: Multiple player names
+        against_hero_id: Filter by enemy hero. Accepts:
+            - Integer/String: Single hero ID or name
+            - List: Multiple hero IDs or names
     
     Returns:
-    Dictionary containing win and loss counts.
+        Dictionary containing win and loss counts.
+    
+    Example:
+        get_player_win_loss("kürlo", lane_role="mid", hero_id="Rubick", included_account_id=["hotpocalypse"])
     """
-
     try:
-        # Search for player and get account_id
         account_id = await get_account_id(player_name)
+        
+        # Resolve all parameters
+        lane_role = await _resolve_lane(lane_role)
+        hero_id = await _resolve_hero(hero_id)
+        included_account_id = await _resolve_account_ids(included_account_id)
+        against_hero_id = await _resolve_hero_list(against_hero_id)
         
         params = {
             k: v for k, v in {
@@ -137,53 +450,60 @@ async def get_player_win_loss(
                 'against_hero_id': against_hero_id
             }.items() if v is not None
         }
-        wl_data = await fetch_api(f"/players/{account_id}/wl", params)
         
+        wl_data = await fetch_api(f"/players/{account_id}/wl", params)
         return wl_data
         
     except ValueError as e:
-        logger.error(f"Error getting value {e}")
+        logger.error(f"Error resolving parameter: {e}")
         return {"error": str(e)}
     except Exception as e:
         logger.error(f"Error getting win/loss for '{player_name}': {e}")
         return {"error": str(e)}
-
 
 @mcp.tool()
 async def get_heroes_played(
     player_name: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
-    lane_role: Optional[int] = None,
-    hero_id: Optional[int] = None,
-    included_account_id: Optional[List[int]] = None,
-    excluded_account_id: Optional[List[int]] = None,
-    with_hero_id: Optional[List[int]] = None,
-    against_hero_id: Optional[List[int]] = None,
+    lane_role: Optional[Union[int, str]] = None,
+    hero_id: Optional[Union[int, str]] = None,
+    included_account_id: Optional[Union[str, List[str]]] = None,
+    excluded_account_id: Optional[Union[str, List[str]]] = None,
+    with_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
+    against_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
     having: Optional[int] = None
-    ) -> Dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Get heroes played statistics for the specified Dota 2 player with optional filters.
+    
+    Supports both IDs and natural language for flexible querying.
 
     Args:
         player_name: The Dota 2 player name to search for.
         limit: Number of matches to limit to
         offset: Number of matches to offset start by
-        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
-        hero_id: Filter by hero ID.
-        included_account_id: Filter matches with this account ID.
-        excluded_account_id: Filter matches without this account.
-        with_hero_id: Hero IDs on the player's team.
-        against_hero_id: Hero IDs against the player's team.
+        lane_role: Lane filter (accepts ID or name like "mid", "carry")
+        hero_id: Hero filter (accepts ID or name like "Rubick")
+        included_account_id: Filter matches with these teammates (accepts names or IDs)
+        excluded_account_id: Filter matches without these players (accepts names or IDs)
+        with_hero_id: Heroes on player's team (accepts IDs or names)
+        against_hero_id: Heroes against player's team (accepts IDs or names)
         having: The minimum number of games played.
     
     Returns:
-    Dictionary containing heroes by a specified player with detail statistics.
+        Dictionary containing heroes played with detailed statistics.
     """
-
     try:
-        # Search for player and get account_id
         account_id = await get_account_id(player_name)
+        
+        # Resolve all parameters
+        lane_role = await _resolve_lane(lane_role)
+        hero_id = await _resolve_hero(hero_id)
+        included_account_id = await _resolve_account_ids(included_account_id)
+        excluded_account_id = await _resolve_account_ids(excluded_account_id)
+        with_hero_id = await _resolve_hero_list(with_hero_id)
+        against_hero_id = await _resolve_hero_list(against_hero_id)
         
         params = {
             k: v for k, v in {
@@ -200,52 +520,134 @@ async def get_heroes_played(
         }
         
         hp_data = await fetch_api(f"/players/{account_id}/heroes", params)
-        
         return hp_data
         
     except ValueError as e:
-        logger.error(f"Error getting value {e}")
+        logger.error(f"Error resolving parameter: {e}")
         return {"error": str(e)}
     except Exception as e:
         logger.error(f"Error getting heroes played for '{player_name}': {e}")
         return {"error": str(e)}
-
 
 @mcp.tool()
 async def get_player_peers(
     player_name: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
-    lane_role: Optional[int] = None,
-    hero_id: Optional[int] = None,
-    included_account_id: Optional[List[int]] = None,
-    excluded_account_id: Optional[List[int]] = None,
-    with_hero_id: Optional[List[int]] = None,
-    against_hero_id: Optional[List[int]] = None,
+    lane_role: Optional[Union[int, str]] = None,
+    hero_id: Optional[Union[int, str]] = None,
+    included_account_id: Optional[Union[str, List[str]]] = None,
+    excluded_account_id: Optional[Union[str, List[str]]] = None,
+    with_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
+    against_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
     peers_count: Optional[int] = 5
-    ) -> Dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Get players who have played with the specified Dota 2 player, with optional filters.
+    
+    Supports both IDs and natural language for flexible querying.
 
     Args:
         player_name: The Dota 2 player name to search for.
         limit: Number of matches to limit to.
         offset: Number of matches to offset start by.
-        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle).
-        hero_id: Filter by specific hero ID
-        included_account_id: Filter by included account ID.
-        excluded_account_id: Filter by excluded account ID.
-        with_hero_id: Hero IDs on the player's team.
-        against_hero_id: Filter by against hero ID.
-        peers_count: Number of peers(players) to return.
+        lane_role: Lane filter (accepts ID or name)
+        hero_id: Hero filter (accepts ID or name)
+        included_account_id: Specific peer(s) to get stats for (accepts names or IDs)
+        excluded_account_id: Players to exclude (accepts names or IDs)
+        with_hero_id: Heroes on player's team (accepts IDs or names)
+        against_hero_id: Heroes against player's team (accepts IDs or names)
+        peers_count: Number of peers to return (default 5)
     
     Returns:
-        Dictionary containing players who have played with the specified Dota 2 player.
-        If included_account_id/s is/are specified, returns stats for that specific peer/s(win, games, personnames).
-        Otherwise, returns stats for 5 peers withthe most matches played together.
+        Dictionary containing peer statistics.
+        If included_account_id is specified, returns stats for those specific peers.
+        Otherwise, returns top N peers by games played together.
     """
     try:
         account_id = await get_account_id(player_name)
+        
+        # Resolve all parameters
+        lane_role = await _resolve_lane(lane_role)
+        hero_id = await _resolve_hero(hero_id)
+        included_account_id = await _resolve_account_ids(included_account_id)
+        excluded_account_id = await _resolve_account_ids(excluded_account_id)
+        with_hero_id = await _resolve_hero_list(with_hero_id)
+        against_hero_id = await _resolve_hero_list(against_hero_id)
+        
+        params = {
+            k: v for k, v in {
+                'limit': limit,
+                'offset': offset,
+                'lane_role': lane_role,
+                'hero_id': hero_id,
+                'included_account_id': included_account_id,
+                'excluded_account_id': excluded_account_id,
+                'with_hero_id': with_hero_id,
+                'against_hero_id': against_hero_id
+            }.items() if v is not None
+        }
+
+        peers_data = await fetch_api(f"/players/{account_id}/peers", params)
+        
+        if included_account_id is not None:
+            return peers_data if peers_data else {"error": "No peers found"}
+        else:
+            return peers_data[:peers_count]
+        
+    except ValueError as e:
+        logger.error(f"Error resolving parameter: {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Error getting peers for '{player_name}': {e}")
+        return {"error": str(e)}
+
+@mcp.tool()
+async def get_player_totals(
+    player_name: str,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    lane_role: Optional[Union[int, str]] = None,
+    hero_id: Optional[Union[int, str]] = None,
+    included_account_id: Optional[Union[str, List[str]]] = None,
+    excluded_account_id: Optional[Union[str, List[str]]] = None,
+    with_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
+    against_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
+    having: Optional[int] = None,
+) -> dict:
+    """
+    Get aggregated statistics and totals for a player.
+    
+    Supports both IDs and natural language for flexible querying.
+    
+    Args:
+        player_name: The Dota 2 player name to search for.
+        limit: Number of matches to limit to
+        offset: Number of matches to offset start by
+        lane_role: Lane filter (accepts ID or name like "mid")
+        hero_id: Hero filter (accepts ID or name like "Rubick")
+        included_account_id: Teammates filter (accepts names or IDs)
+        excluded_account_id: Players to exclude (accepts names or IDs)
+        with_hero_id: Heroes on player's team (accepts IDs or names)
+        against_hero_id: Heroes against player's team (accepts IDs or names)
+        having: The minimum number of games played.
+    
+    Returns:
+        List of statistical totals with fields like:
+        - field: "kills", "deaths", "assists", etc.
+        - n: number of matches
+        - sum: total value across all matches
+    """
+    try:
+        account_id = await get_account_id(player_name)
+        
+        # Resolve all parameters
+        lane_role = await _resolve_lane(lane_role)
+        hero_id = await _resolve_hero(hero_id)
+        included_account_id = await _resolve_account_ids(included_account_id)
+        excluded_account_id = await _resolve_account_ids(excluded_account_id)
+        with_hero_id = await _resolve_hero_list(with_hero_id)
+        against_hero_id = await _resolve_hero_list(against_hero_id)
         
         params = {
             k: v for k, v in {
@@ -257,73 +659,18 @@ async def get_player_peers(
                 'excluded_account_id': excluded_account_id,
                 'with_hero_id': with_hero_id,
                 'against_hero_id': against_hero_id,
-                'peers_count': peers_count
+                'having': having
             }.items() if v is not None
         }
-
-
-        peers_data = await fetch_api(f"/players/{account_id}/peers", params)
         
-        if included_account_id is not None: #If asked for multiple peers
-            if peers_data and len(peers_data) > 0:
-                return peers_data[0]
-            else:
-                return {"error": "No peer found"}
-        else:
-            return peers_data[:peers_count] #Returns the first 'peers_count' amount
+        return await fetch_api(f"/players/{account_id}/totals", params)
         
     except ValueError as e:
-        logger.error(f"Error getting value {e}")
+        logger.error(f"Error resolving parameter: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.error(f"Error getting peers for '{player_name}': {e}")
+        logger.error(f"Error getting totals for '{player_name}': {e}")
         return {"error": str(e)}
-
-@mcp.tool()
-async def get_player_totals(
-    player_name: str,
-    limit: Optional[int] = None,
-    offset: Optional[int] = None,
-    lane_role: Optional[int] = None,
-    hero_id: Optional[int] = None,
-    included_account_id: Optional[List[int]] = None,
-    excluded_account_id: Optional[List[int]] = None,
-    with_hero_id: Optional[List[int]] = None,
-    against_hero_id: Optional[List[int]] = None,
-    having: Optional[int] = None,
-) -> dict:
-    """
-    Get aggregated statistics and totals for a player.
-    
-    Args:
-        player_name: The Dota 2 player name to search for.
-        limit: Number of matches to limit to
-        offset: Number of matches to offset start by
-        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
-        hero_id: Filter by hero ID.
-        included_account_id: Filter matches with this account ID.
-        excluded_account_id: Filter matches without this account.
-        with_hero_id: Hero IDs on the player's team.
-        against_hero_id: Hero IDs against the player's team.
-        having: The minimum number of games played.
-    
-    Example Response: {
-        {"field": "kills",
-        "n": 5,
-        "sum": 10},
-        {"field": "deaths",
-        "n": 12,
-        "sum": 10},
-        ....
-    }
-        field (string): The name of the statistical category being totaled (e.g., "kills", "deaths", "assists", "gold_per_min", "tower_kills", etc.)
-        n (integer): The number of matches/games where this statistic was recorded
-        sum (integer): The total/cumulative value of that statistic across all those matches
-    """
-    account_id = await get_account_id(player_name)
-
-    params = {k: v for k, v in locals().items() if k != 'account_id' and v is not None}
-    return await fetch_api(f"/players/{account_id}/totals", params)
 
 @mcp.tool()
 async def get_player_histograms(
@@ -331,64 +678,94 @@ async def get_player_histograms(
     field: str,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
-    lane_role: Optional[int] = None,
-    hero_id: Optional[int] = None,
-    included_account_id: Optional[int] = None,
-    excluded_account_id: Optional[int] = None,
-    with_hero_id: Optional[int] = None,
-    against_hero_id: Optional[int] = None,
+    lane_role: Optional[Union[int, str]] = None,
+    hero_id: Optional[Union[int, str]] = None,
+    included_account_id: Optional[Union[str, List[str]]] = None,
+    excluded_account_id: Optional[Union[str, List[str]]] = None,
+    with_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
+    against_hero_id: Optional[Union[int, str, List[Union[int, str]]]] = None,
     having: Optional[int] = None,
 ) -> dict:
     """
     Get distribution of matches for a player in a specific statistical field.
     
+    Supports both IDs and natural language for flexible querying.
+    
     Args:
         player_name: The Dota 2 player name to search for.
-        field: Statistical field, available histogram fields:
-        * kills, deaths, assists, hero_damage, hero_healing, gold_per_min, xp_per_min, last_hits, 
-        * lane_efficiency_pct, actions_per_min, level, pings, duration, comeback, stomp, loss
+        field: Statistical field (kills, deaths, assists, gold_per_min, xp_per_min, last_hits, 
+               lane_efficiency_pct, actions_per_min, level, pings, duration, comeback, stomp, loss)
         limit: Number of results to return
         offset: Number of results to offset
-        lane_role: Filter by lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
-        hero_id: Filter by hero ID.
-        included_account_id: Filter matches with this account ID.
-        excluded_account_id: Filter matches without this account.
-        with_hero_id: Hero IDs on the player's team.
-        against_hero_id: Hero IDs against the player's team.
+        lane_role: Lane filter (accepts ID or name)
+        hero_id: Hero filter (accepts ID or name)
+        included_account_id: Teammates filter (accepts names or IDs)
+        excluded_account_id: Players to exclude (accepts names or IDs)
+        with_hero_id: Heroes on player's team (accepts IDs or names)
+        against_hero_id: Heroes against player's team (accepts IDs or names)
         having: The minimum number of games played.
     
-    Example Response: {
-        {"x": 154,
-        "games": 5,
-        "win": 0},
-        {"x": 616,
-        "games": 15,
-        "win": 11},
-        ....
-    }
-        x (integer): The value representing the bin/bucket (e.g., for gold_per_min, this could be 0-100, 100-200, 200-300, etc.)
-        games (integer): Total number of matches where the player's performance fell into this range
-        win (integer): Number of those matches that were won
+    Returns:
+        List of histogram buckets with:
+        - x: value bucket
+        - games: number of games in this bucket
+        - win: number of wins in this bucket
     """
-    account_id = await get_account_id(player_name)
-
-    params = {k: v for k, v in locals().items() if k not in ['account_id', 'field'] and v is not None}
-    return await fetch_api(f"/players/{account_id}/histograms/{field}", params)
+    try:
+        account_id = await get_account_id(player_name)
+        
+        # Resolve all parameters
+        lane_role = await _resolve_lane(lane_role)
+        hero_id = await _resolve_hero(hero_id)
+        included_account_id = await _resolve_account_ids(included_account_id)
+        excluded_account_id = await _resolve_account_ids(excluded_account_id)
+        with_hero_id = await _resolve_hero_list(with_hero_id)
+        against_hero_id = await _resolve_hero_list(against_hero_id)
+        
+        params = {
+            k: v for k, v in {
+                'limit': limit,
+                'offset': offset,
+                'lane_role': lane_role,
+                'hero_id': hero_id,
+                'included_account_id': included_account_id,
+                'excluded_account_id': excluded_account_id,
+                'with_hero_id': with_hero_id,
+                'against_hero_id': against_hero_id,
+                'having': having
+            }.items() if v is not None
+        }
+        
+        return await fetch_api(f"/players/{account_id}/histograms/{field}", params)
+        
+    except ValueError as e:
+        logger.error(f"Error resolving parameter: {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.error(f"Error getting histograms for '{player_name}': {e}")
+        return {"error": str(e)}
 
 # ============================================================================
 # EXTRA ENDPOINTS
 # ============================================================================
 
 @mcp.tool()
-async def get_benchmarks(hero_id: str) -> dict:
+async def get_benchmarks(hero_id: Union[int, str]) -> dict:
     """
     Get statistical benchmarks for a hero (average performance metrics).
     
     Args:
-        hero_id: Hero ID
+        hero_id: Hero ID or hero name (e.g., 86 or "Rubick")
+    
+    Returns:
+        Benchmark statistics for the hero
     """
-    return await fetch_api("/benchmarks", {"hero_id": hero_id})
-
+    try:
+        hero_id = await _resolve_hero(hero_id)
+        return await fetch_api("/benchmarks", {"hero_id": hero_id})
+    except ValueError as e:
+        logger.error(f"Error resolving hero: {e}")
+        return {"error": str(e)}
 
 @mcp.tool()
 async def get_records(field: str) -> dict:
@@ -396,54 +773,62 @@ async def get_records(field: str) -> dict:
     Get top performances in a specific statistical field.
     
     Args:
-        field: Statistical field, available histogram fields:
-        * kills, deaths, assists, hero_damage, hero_healing, gold_per_min, xp_per_min, last_hits, 
-        * lane_efficiency_pct, actions_per_min, level, pings, duration, comeback, stomp, loss
+        field: Statistical field (kills, deaths, assists, hero_damage, hero_healing, 
+               gold_per_min, xp_per_min, last_hits, lane_efficiency_pct, actions_per_min, 
+               level, pings, duration, comeback, stomp, loss)
+    
+    Returns:
+        Top record performances for the specified field
     """
     return await fetch_api(f"/records/{field}")
 
 @mcp.tool()
 async def get_scenarios_lane_roles(
-    lane_role: Optional[str] = None,
-    hero_id: Optional[int] = None,
+    lane_role: Optional[Union[int, str]] = None,
+    hero_id: Optional[Union[int, str]] = None,
 ) -> dict:
     """
-    Get win rates for heroes in specific lane roles by range of time.
+    Get win rates for heroes in specific lane roles by time range.
     
     Args:
-        lane_role: Lane role 1-4 (1=Safe Lane, 2=Mid, 3=Off Lane, 4=Jungle)
-        hero_id: Filter by hero ID
+        lane_role: Lane filter (accepts ID 1-4 or name like "mid")
+        hero_id: Hero filter (accepts ID or name like "Rubick")
 
-    Example Response: {
-        "hero_id": 1,
-        "lane_role": 1,
-        'time': 900, #in seconds
-        "games": 21,
-        "win": 14
-    },
-    ...
+    Returns:
+        List of scenarios with hero_id, lane_role, time (seconds), games, and wins
     """
-    params = {k: v for k, v in locals().items() if v is not None}
-    return await fetch_api("/scenarios/laneRoles", params)
+    try:
+        lane_role = await _resolve_lane(lane_role)
+        hero_id = await _resolve_hero(hero_id)
+        
+        params = {k: v for k, v in {'lane_role': lane_role, 'hero_id': hero_id}.items() if v is not None}
+        return await fetch_api("/scenarios/laneRoles", params)
+        
+    except ValueError as e:
+        logger.error(f"Error resolving parameter: {e}")
+        return {"error": str(e)}
 
 # ============================================================================
 # MATCH ENDPOINTS
 # ============================================================================
 
 @mcp.tool()
-async def get_recent_matches(
-    player_name: str
-) -> dict:
+async def get_recent_matches(player_name: str) -> dict:
     """
     Get player's recent matches.
+    
+    Args:
+        player_name: The Dota 2 player name to search for
     
     Returns:
         List of recent match objects with details like match_id, hero_id, kills, deaths, assists, etc.
     """
-    account_id = await get_account_id(player_name)
-    
-    params = {k: v for k, v in locals().items() if k not in ['account_id', 'player_name'] and v is not None}
-    return await fetch_api(f"/players/{account_id}/recentMatches", params)
+    try:
+        account_id = await get_account_id(player_name)
+        return await fetch_api(f"/players/{account_id}/recentMatches")
+    except Exception as e:
+        logger.error(f"Error getting recent matches for '{player_name}': {e}")
+        return {"error": str(e)}
 
 @mcp.tool()
 async def request_parse_match(match_id: int) -> dict:
@@ -470,6 +855,9 @@ async def get_match_details(match_id: int) -> dict:
     
     Args:
         match_id: Match ID
+    
+    Returns:
+        Detailed match information including all players, items, abilities, etc.
     """
     return await fetch_api(f"/matches/{match_id}")
 
@@ -481,6 +869,7 @@ async def get_match_details(match_id: int) -> dict:
 async def get_heroes() -> dict:
     """
     Get comprehensive list of all available heroes with their attributes and basic information.
+    
     Returns:
         Array of hero objects, each containing:
         - id (int): Hero ID
@@ -494,63 +883,56 @@ async def get_heroes() -> dict:
     return gh_data
 
 @mcp.tool()
-async def get_hero_matchups(hero_id: int) -> dict:
+async def get_hero_matchups(hero_id: Union[int, str]) -> dict:
     """
     Get results against other heroes for a specific hero (win/loss rates, counter-picks).
     
     Args:
-        hero_id: The ID of the hero to get matchup data for
+        hero_id: Hero ID or hero name (e.g., 86 or "Rubick")
     
     Returns:
-        Array of matchup objects, each containing:
-        - hero_id (int): The opposing hero's ID
-        - hero_name (str): The opposing hero's name (auto-enriched)
-        - games_played (int): Number of games played against this hero
-        - wins (int): Number of wins against this hero
-        - losses (int): Number of losses against this hero
+        Array of matchup objects showing how this hero performs against other heroes.
+        Each object contains opponent hero_id, games_played, wins, etc.
         
     Example: Use this to find which heroes counter or are countered by the specified hero.
-    A hero with high wins against another is considered a counter-pick.
     """
-    data = await fetch_api(f"/heroes/{hero_id}/matchups")
-    return data
+    try:
+        hero_id = await _resolve_hero(hero_id)
+        return await fetch_api(f"/heroes/{hero_id}/matchups")
+    except ValueError as e:
+        logger.error(f"Error resolving hero: {e}")
+        return {"error": str(e)}
 
 @mcp.tool()
-async def get_hero_item_popularity(hero_id: int) -> dict:
+async def get_hero_item_popularity(hero_id: Union[int, str]) -> dict:
     """
     Get item popularity for a hero categorized by game phase (start, early, mid, late).
     
     Args:
-        hero_id: The ID of the hero
+        hero_id: Hero ID or hero name (e.g., 86 or "Rubick")
     
     Returns:
         Object with game phases (start_game_items, early_game_items, mid_game_items, late_game_items).
         Each phase contains items with their popularity counts and win rates.
-        Example response: {
-            "<phase_name>": {
-                "<item_id>": "<popularity/count>"
-                "<item_id>": "<popularity/count>"
-            },
-            "<phase_name_2>": {
-                "<item_id>": "<popularity/count>"
-                "<item_id>": "<popularity/count>"
-            },
-            ...
-        }}
         
-    Example: Use this to understand optimal item builds and timing for a hero based on 
-    professional game data.
+    Example: Use this to understand optimal item builds and timing for a hero.
     """
-    itemp_data = await fetch_api(f"/heroes/{hero_id}/itemPopularity")
-    return itemp_data
-
+    try:
+        hero_id = await _resolve_hero(hero_id)
+        return await fetch_api(f"/heroes/{hero_id}/itemPopularity")
+    except ValueError as e:
+        logger.error(f"Error resolving hero: {e}")
+        return {"error": str(e)}
 
 @mcp.tool()
 async def get_hero_stats() -> dict:
-    """Get aggregated statistics about hero performance in recent matches (win rates, pick rates)."""
-    hs_data = await fetch_api("/heroStats")
-    return hs_data
-
+    """
+    Get aggregated statistics about hero performance in recent matches (win rates, pick rates).
+    
+    Returns:
+        Array of hero statistics including win rates, pick rates, and performance metrics
+    """
+    return await fetch_api("/heroStats")
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -564,7 +946,7 @@ async def get_account_id(player_name: str) -> str:
         player_name: The player username
         
     Returns:
-        The account_id
+        The account_id as string
         
     Raises:
         ValueError: If player not found
@@ -589,10 +971,6 @@ async def get_account_id(player_name: str) -> str:
     
     return account_id
 
-def build_query_params(arguments: dict, exclude_keys: list) -> dict: #check this one
-    """Build query parameters from arguments, excluding specified keys(account_id)."""
-    return {k: v for k, v in arguments.items() if k not in exclude_keys and v is not None}
-
 async def fetch_api(endpoint: str, params: dict = None) -> dict:
     """
     Fetch data from OpenDota API with rate limiting.
@@ -616,23 +994,24 @@ async def fetch_api(endpoint: str, params: dict = None) -> dict:
     logger.info(f"Received response status: {response.status_code}")
     return response.json()
 
-def simplify_response(data: Any, remove_keys: List[str] = None) -> Any: #check this one
+def simplify_response(data: Any, remove_keys: List[str] = None) -> Any:
     """
     Simplify API response by removing unnecessary keys.
     
     Args:
         data: The API response data
         remove_keys: List of keys to remove from objects
+    
+    Returns:
+        Simplified data structure
     """
     if remove_keys is None:
         remove_keys = []
     
     if isinstance(data, dict):
         simplified = {k: v for k, v in data.items() if k not in remove_keys}
-
         for key, value in simplified.items():
             simplified[key] = simplify_response(value, remove_keys)
-        
         return simplified
     
     elif isinstance(data, list):

@@ -9,6 +9,7 @@ from ..classes import Player
 from ..client import fetch_api
 from ..utils import get_account_id
 from ..resolvers import resolve_hero, resolve_hero_list, resolve_lane, resolve_account_ids, resolve_stat_field
+from .lookup_tools import get_hero_by_id
 
 logger = logging.getLogger("opendota-server")
 
@@ -24,7 +25,7 @@ def register_player_tools(mcp: FastMCP):
         Retrieves:
         - Player profile (name, avatar, profile URL)
         - Win/loss statistics and win rate
-        - Top 5 most played heroes
+        - Top 10 most played heroes
         
         Args:
             player_name: The Dota 2 player name to search for
@@ -55,8 +56,23 @@ def register_player_tools(mcp: FastMCP):
             logger.info(f"Fetching favorite heroes for account_id: {account_id}")
             heroes_data = await fetch_api(f"/players/{account_id}/heroes")
             
-            top_5_heroes = heroes_data[:5]
-            player.fav_heroes = [hero['hero_id'] for hero in top_5_heroes if 'hero_id' in hero]
+            top_10_heroes = heroes_data[:10]
+            player.fav_heroes = []
+            for hero in top_10_heroes:
+                hero_id = hero.get('hero_id')
+                if hero_id is not None:
+                    hero_info = await get_hero_by_id(hero_id)
+                    if "localized_name" in hero_info:
+                        hero_name = hero_info["localized_name"]
+                        games_played = hero.get('games')
+                        win_count = hero.get("win")
+                        win_rate = round((win_count / games_played) * 100, 2)
+                        player.fav_heroes.append({
+                            "hero_name": hero_name,
+                            "games_played": games_played,
+                            "win_count": win_count,
+                            "win_rate": win_rate
+                            })
             
             logger.info(f"Successfully retrieved complete info for {player_name}")
             return player.to_dict()

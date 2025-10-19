@@ -12,7 +12,7 @@ class Player:
     win_count: Optional[int] = None
     lose_count: Optional[int] = None
     win_rate: Optional[float] = None
-    fav_heroes: Optional[List[str]] = None
+    fav_heroes: Optional[List[Dict[str, Any]]] = None
     
     def calculate_win_rate(self):
         """Calculate win rate from win and lose counts"""

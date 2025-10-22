@@ -8,8 +8,7 @@ from fastmcp import FastMCP
 from ..classes import Player
 from ..client import fetch_api
 from ..utils import get_account_id
-from ..resolvers import resolve_hero, resolve_hero_list, resolve_lane, resolve_account_ids, resolve_stat_field
-from .lookup_tools import get_hero_by_id
+from ..resolvers import resolve_hero, resolve_hero_list, resolve_lane, resolve_account_ids, resolve_stat_field, get_hero_by_id_logic
 
 logger = logging.getLogger("opendota-server")
 
@@ -61,7 +60,7 @@ def register_player_tools(mcp: FastMCP):
             for hero in top_10_heroes:
                 hero_id = hero.get('hero_id')
                 if hero_id is not None:
-                    hero_info = await get_hero_by_id(hero_id)
+                    hero_info = await get_hero_by_id_logic(hero_id)
                     if "localized_name" in hero_info:
                         hero_name = hero_info["localized_name"]
                         games_played = hero.get('games')

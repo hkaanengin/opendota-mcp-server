@@ -2,6 +2,9 @@ from dataclasses import dataclass, asdict
 from typing import Optional, List, Dict, Any
 import asyncio
 from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger("opendota-server")
 
 @dataclass
 class Player:
@@ -53,7 +56,7 @@ class RateLimiter:
                 oldest_request = self.requests[0]
                 wait_time = 60 - (now - oldest_request).total_seconds()
                 if wait_time > 0:
-                    print(f"Rate limit reached. Waiting {wait_time:.2f} seconds...")
+                    logger.warning(f"Rate limit reached. Waiting {wait_time:.2f} seconds...")
                     await asyncio.sleep(wait_time)
                     # Clean up again after waiting
                     now = datetime.now()

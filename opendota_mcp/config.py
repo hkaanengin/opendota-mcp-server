@@ -32,22 +32,26 @@ LANE_MAPPING = {
     # Safe Lane / Carry / Position 1
     "safe lane": 1, "safelane": 1, "safe": 1, "carry": 1,
     "pos 1": 1, "position 1": 1, "pos1": 1, "1": 1,
+    "hard support": 1, "hardsupport": 1, "hard sup": 1, "hardsup":1 , 
+    "pos 5": 1, "position 5": 1, "pos5": 1, "5": 1, 
     # Mid Lane / Position 2
     "mid": 2, "midlane": 2, "mid lane": 2, "middle": 2,
     "pos 2": 2, "position 2": 2, "pos2": 2, "2": 2,
     # Off Lane / Offlane / Position 3
     "off lane": 3, "offlane": 3, "off": 3, "hard lane": 3, "hardlane": 3,
     "pos 3": 3, "position 3": 3, "pos3": 3, "3": 3,
+    "sot support": 1, "softsupport": 1, "soft sup": 1, "softsup":1 , 
+    "pos 4": 1, "position 4": 1, "pos4": 1, "4": 1, 
     # Jungle / Position 4
-    "jungle": 4, "jungler": 4, "roaming": 4, "roam": 4,
-    "pos 4": 4, "position 4": 4, "pos4": 4, "4": 4,
+    # "jungle": 4, "jungler": 4, "roaming": 4, "roam": 4,
+    # "pos 4": 4, "position 4": 4, "pos4": 4, "4": 4,
 }
 
 LANE_DESCRIPTIONS = {
-    1: "Safe Lane (Carry/Position 1)",
+    1: "Safe Lane (Carry-Position 1/Hard Support-Position 5)",
     2: "Mid Lane (Position 2)",
-    3: "Off Lane (Offlane/Position 3)",
-    4: "Jungle/Roaming (Position 4)"
+    3: "Off Lane (Offlane-Position 3/Soft Support-Position 4)",
+    # 4: "Jungle/Roaming (Position 4)"
 }
 
 # Valid statistical fields for histograms and records
@@ -81,23 +85,4 @@ VALID_STAT_FIELDS = {
     "comeback": "comeback", "comebacks": "comeback",
     "stomp": "stomp", "stomps": "stomp",
     "loss": "loss", "losses": "loss", "lose": "loss",
-}
-
-STAT_FIELD_DESCRIPTIONS = {
-    "kills": "Number of enemy hero kills",
-    "deaths": "Number of times the player died",
-    "assists": "Number of assists on enemy hero kills",
-    "hero_damage": "Total damage dealt to enemy heroes",
-    "hero_healing": "Total healing provided to allied heroes",
-    "gold_per_min": "Gold earned per minute (GPM)",
-    "xp_per_min": "Experience earned per minute (XPM)",
-    "last_hits": "Number of last hits on creeps (CS)",
-    "lane_efficiency_pct": "Lane farming efficiency percentage",
-    "actions_per_min": "Actions performed per minute (APM)",
-    "level": "Final level achieved in the game",
-    "pings": "Number of pings used in the game",
-    "duration": "Match duration in seconds",
-    "comeback": "Games where the team made a comeback",
-    "stomp": "Games that were one-sided stomps",
-    "loss": "Games that resulted in a loss"
 }

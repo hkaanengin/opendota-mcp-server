@@ -76,16 +76,29 @@ jobs:
           echo "Waiting for service to be ready..."
           sleep 15
           
-          echo "Testing /sse endpoint..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.SERVICE_URL }}/sse)
-          
-          if [ "$RESPONSE" = "200" ]; then
-            echo "✅ Health check passed!"
-          else
-            echo "⚠️  Health check returned: $RESPONSE"
-            echo "This might be normal - MCP servers may require specific headers"
-          fi
+          echo "Testing MCP /sse endpoint..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 5 \
+            -H "Accept: text/event-stream" \
+            -I ${{ env.SERVICE_URL }}/sse || echo "000")
 
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✅ MCP SSE endpoint is reachable!"
+          else
+            echo "⚠️  Received HTTP $RESPONSE"
+            echo "This may still be okay if your server requires authentication or headers."
+          fi
+        
+      - name: Validate MCP Connection
+        run: |
+          echo "Validating MCP server handshake via Inspector..."
+          npm install -g @modelcontextprotocol/inspector
+
+          npx @modelcontextprotocol/inspector --timeout 10 ${{ env.SERVICE_URL }}/sse || {
+            echo "⚠️  MCP Inspector failed to connect — check logs above.";
+            exit 1;
+          }
+        
       - name: Display Deployment Info
         run: |
           echo "================================================"

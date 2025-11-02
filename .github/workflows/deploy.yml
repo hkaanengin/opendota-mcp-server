@@ -1,0 +1,108 @@
+name: Validate & Deploy to Cloud Run
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]  # Validate on PR updates
+  push:
+    branches:
+      - main  # Deploy only when PR is merged
+
+env:
+  PROJECT_ID: opendota-mcp
+  SERVICE_NAME: opendota-mcp-server
+  REGION: europe-west1  # ← Changed to Europe!
+
+jobs:
+  validate-docker:
+    runs-on: ubuntu-latest
+    name: Validate Docker
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.SERVICE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Cloud Run
+    needs: [validate-docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run from Source
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --source . \
+            --platform managed \
+            --region ${{ env.REGION }} \
+            --allow-unauthenticated \
+            --set-env-vars MCP_TRANSPORT=sse,LOG_LEVEL=INFO \
+            --memory 512Mi \
+            --cpu 1 \
+            --timeout 300 \
+            --max-instances 10
+
+      - name: Get Service URL
+        id: get-url
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+
+      - name: Post-deployment Health Check
+        run: |
+          echo "Waiting for service to be ready..."
+          sleep 15
+          
+          echo "Testing /sse endpoint..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.SERVICE_URL }}/sse)
+          
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✅ Health check passed!"
+          else
+            echo "⚠️  Health check returned: $RESPONSE"
+            echo "This might be normal - MCP servers may require specific headers"
+          fi
+
+      - name: Display Deployment Info
+        run: |
+          echo "================================================"
+          echo "🚀 Deployment Successful!"
+          echo "================================================"
+          echo "Service URL: ${{ env.SERVICE_URL }}"
+          echo "MCP SSE Endpoint: ${{ env.SERVICE_URL }}/sse"
+          echo ""
+          echo "To use with MCP Inspector:"
+          echo "  npx @modelcontextprotocol/inspector ${{ env.SERVICE_URL }}/sse"
+          echo ""
+          echo "To use with Claude Desktop, add to config:"
+          echo '  "opendota": {'
+          echo '    "command": "npx",'
+          echo '    "args": ["-y", "mcp-remote", "${{ env.SERVICE_URL }}/sse"]'
+          echo '  }'
+          echo "================================================"

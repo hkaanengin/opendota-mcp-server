@@ -17,7 +17,6 @@ jobs:
     name: Build & Push to Docker Hub
     outputs:
       image-tag: ${{ steps.set_image.outputs.IMAGE_TAG }}
-      image-sha: ${{ steps.set_image.outputs.IMAGE_SHA }}
     
     steps:
       - name: 📝 Checkout code
@@ -45,7 +44,6 @@ jobs:
         id: set_image
         run: |
           echo "IMAGE_TAG=${{ env.IMAGE_REPO }}:latest" >> $GITHUB_OUTPUT
-          echo "IMAGE_SHA=${{ env.IMAGE_REPO }}:${{ github.sha }}" >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: ubuntu-latest
@@ -65,6 +63,7 @@ jobs:
           
       - name: 🚀 Deploy to Cloud Run from Image
         run: |
+          echo "Deploying image: ${{ needs.build-and-push.outputs.image-tag }}"
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image ${{ needs.build-and-push.outputs.image-tag }} \
             --platform managed \

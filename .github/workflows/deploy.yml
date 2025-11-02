@@ -3,16 +3,16 @@ name: Validate & Deploy to Cloud Run
 on:
   pull_request:
     branches:
-      - main
-    types: [opened, synchronize, reopened]  # Validate on PR updates
+      - master
+    types: [opened, synchronize, reopened]
   push:
     branches:
-      - main  # Deploy only when PR is merged
+      - master
 
 env:
   PROJECT_ID: opendota-mcp
   SERVICE_NAME: opendota-mcp-server
-  REGION: europe-west1  # ← Changed to Europe!
+  REGION: europe-west1
 
 jobs:
   validate-docker:
@@ -38,7 +38,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy to Cloud Run
     needs: [validate-docker]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: |
+      github.ref == 'refs/heads/master' && 
+      github.event_name == 'push' &&
+      contains(github.event.head_commit.message, 'Merge pull request')
     
     steps:
       - name: Checkout code

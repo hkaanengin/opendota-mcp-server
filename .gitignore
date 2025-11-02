@@ -5,3 +5,16 @@ __pycache__
 test_server.py
 test_lol.py
 src/tools.py
+key.json
+*.egg-info/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db

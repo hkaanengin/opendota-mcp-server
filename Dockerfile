@@ -20,15 +20,15 @@ COPY opendota_mcp/ ./opendota_mcp/
 
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
-    MCP_TRANSPORT=sse \
+    MCP_TRANSPORT=http \
     PORT=8080
 
 # Expose port
 EXPOSE 8080
 
-# Health check - check the /sse endpoint
+# Health check - check the HTTP endpoint instead of SSE
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/sse || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the server using the installed entry point
 CMD ["python", "-m", "opendota_mcp.server"]

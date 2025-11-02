@@ -1,6 +1,6 @@
 """
 OpenDota MCP Server - Main Entry Point
-Supports both stdio (local) and SSE (Cloud Run) transports
+Supports stdio (local), SSE, and HTTP transports
 """
 import logging
 import os
@@ -63,21 +63,27 @@ async def lifespan_shutdown():
 def main():
     """Main entry point for the MCP server"""
     
-    # Check transport mode
-    use_sse = os.getenv("MCP_TRANSPORT", "stdio") == "sse"
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     port = int(os.getenv("PORT", "8080"))
     
-    if use_sse:
-        # Remote deployment mode (Cloud Run)
-        logger.info(f"Starting in SSE mode on 0.0.0.0:{port}")
+    if transport in ["sse", "http"]:
+        logger.info(f"Starting in {transport.upper()} mode on 0.0.0.0:{port}")
         
         # Run startup tasks
         asyncio.run(lifespan_startup())
         
         try:
-            # Start HTTP/SSE server
+            # Choose the appropriate app based on transport
+            if transport == "sse":
+                app = mcp.sse_app()
+                logger.info("Using SSE transport")
+            else:  # http
+                app = mcp.create_app()
+                logger.info("Using HTTP transport")
+            
+            # Start HTTP server
             uvicorn.run(
-                mcp.sse_app(),
+                app,
                 host="0.0.0.0",
                 port=port,
                 log_level="info"
@@ -89,14 +95,11 @@ def main():
         finally:
             asyncio.run(lifespan_shutdown())
     else:
-        # Local mode (stdio transport)
         logger.info("Starting in stdio mode for local development")
         
-        # Run startup
         asyncio.run(lifespan_startup())
         
         try:
-            # Start with stdio transport
             mcp.run()
         except KeyboardInterrupt:
             logger.info("Received interrupt signal, shutting down...")
@@ -104,7 +107,6 @@ def main():
             logger.error(f"ERROR: Server error: {e}", exc_info=True)
         finally:
             asyncio.run(lifespan_shutdown())
-
 
 if __name__ == '__main__':
     main()

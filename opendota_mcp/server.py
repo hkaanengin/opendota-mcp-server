@@ -1,112 +1,62 @@
 """
-OpenDota MCP Server - Main Entry Point
-Supports stdio (local), SSE, and HTTP transports
+OpenDota MCP Server - Deployment Ready
+Works with Claude Desktop (stdio) AND Cloud Run (HTTP)
 """
 import logging
 import os
-import asyncio
 import sys
+from contextlib import asynccontextmanager
 from fastmcp import FastMCP
-import uvicorn
 
-# Setup logging - DON'T log to stdout (MCP uses it for JSON)
+# Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-
-# Log to stderr instead of stdout for MCP compatibility
 logging.basicConfig(
     level=log_level,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.StreamHandler(sys.stderr)
-    ]
+    handlers=[logging.StreamHandler(sys.stderr)]
 )
 
 logger = logging.getLogger("opendota-server")
 
-# Initialize MCP server
-mcp = FastMCP("OpenDota API Server")
-
-# Import and register all tools
+# Import your existing components
 from .tools import register_all_tools
 from .client import cleanup_http_client
 from .utils import load_reference_data
 
-
-async def lifespan_startup():
-    """Initialize on startup"""
-    logger.info("=" * 60)
+@asynccontextmanager
+async def app_lifespan(server: FastMCP):
+    """FastMCP lifespan management"""
     logger.info("Starting OpenDota MCP server...")
-    logger.info("=" * 60)
     
-    # Load reference data on startup
-    logger.info("Initializing reference data...")
+    # Startup
     await load_reference_data()
+    register_all_tools(server)
+    logger.info("SUCCESS: All tools registered")
     
-    # Register all tools
-    logger.info("Registering MCP tools...")
-    register_all_tools(mcp)
-    logger.info("SUCCESS: All tools registered successfully")
-    
-    logger.info("=" * 60)
-    logger.info("READY: Server is ready to accept requests!")
-    logger.info("=" * 60)
+    try:
+        yield  # Server runs here
+    finally:
+        # Shutdown
+        await cleanup_http_client()
+        logger.info("Server shutdown complete")
 
-
-async def lifespan_shutdown():
-    """Cleanup on shutdown"""
-    logger.info("Cleaning up resources...")
-    await cleanup_http_client()
-    logger.info("SUCCESS: Server shutdown complete")
-
+# Create server with lifespan
+mcp = FastMCP("OpenDota API Server", lifespan=app_lifespan)
 
 def main():
-    """Main entry point for the MCP server"""
-    
+    """Main entry point"""
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     port = int(os.getenv("PORT", "8080"))
     
-    if transport in ["sse", "http"]:
-        logger.info(f"Starting in {transport.upper()} mode on 0.0.0.0:{port}")
-        
-        # Run startup tasks
-        asyncio.run(lifespan_startup())
-        
-        try:
-            # Choose the appropriate app based on transport
-            if transport == "sse":
-                app = mcp.sse_app()
-                logger.info("Using SSE transport")
-            else:  # http
-                app = mcp.create_app()
-                logger.info("Using HTTP transport")
-            
-            # Start HTTP server
-            uvicorn.run(
-                app,
-                host="0.0.0.0",
-                port=port,
-                log_level="info"
-            )
-        except KeyboardInterrupt:
-            logger.info("Received interrupt signal, shutting down...")
-        except Exception as e:
-            logger.error(f"ERROR: Server error: {e}", exc_info=True)
-        finally:
-            asyncio.run(lifespan_shutdown())
+    if transport == "http":
+        # Cloud Run deployment - use HTTP
+        logger.info(f"Starting HTTP server on 0.0.0.0:{port}")
+        mcp.run(transport="http", host="0.0.0.0", port=port)
     else:
-        logger.info("Starting in stdio mode for local development")
-        
-        asyncio.run(lifespan_startup())
-        
-        try:
-            mcp.run()
-        except KeyboardInterrupt:
-            logger.info("Received interrupt signal, shutting down...")
-        except Exception as e:
-            logger.error(f"ERROR: Server error: {e}", exc_info=True)
-        finally:
-            asyncio.run(lifespan_shutdown())
+        # Local Claude Desktop - use stdio (default)
+        logger.info("Starting in stdio mode for Claude Desktop")
+        mcp.run()  # This uses stdio by default
 
 if __name__ == '__main__':
     main()

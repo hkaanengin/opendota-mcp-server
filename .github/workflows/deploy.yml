@@ -94,7 +94,7 @@ jobs:
           echo "Validating MCP server handshake via Inspector..."
           npm install -g @modelcontextprotocol/inspector
 
-          npx @modelcontextprotocol/inspector --timeout 10 ${{ env.SERVICE_URL }}/sse || {
+          npx -y @modelcontextprotocol/inspector --timeout 10 -- ${{ env.SERVICE_URL }}/sse || {
             echo "⚠️  MCP Inspector failed to connect — check logs above.";
             exit 1;
           }

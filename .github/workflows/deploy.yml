@@ -9,14 +9,13 @@ env:
   PROJECT_ID: opendota-mcp
   SERVICE_NAME: opendota-mcp-server
   REGION: europe-west1
-  IMAGE_REPO: ${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server
   
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     name: Build & Push to Docker Hub
     outputs:
-      image-tag: ${{ steps.set_image.outputs.IMAGE_TAG }}
+      image-tag: ${{ steps.meta.outputs.tags }}
     
     steps:
       - name: 📝 Checkout code
@@ -31,24 +30,32 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=latest
+
       - name: 📦 Build and Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE_REPO }}:${{ github.sha }}, ${{ env.IMAGE_REPO }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          
-      - name: Set Image Tag for subsequent jobs
-        id: set_image
-        run: |
-          echo "IMAGE_TAG=${{ env.IMAGE_REPO }}:latest" >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: ubuntu-latest
     name: Deploy to Cloud Run
     needs: [build-and-push]
+    env:
+      IMAGE_TAG: ${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:latest
     
     steps:
       - name: 🔑 Authenticate to Google Cloud
@@ -63,9 +70,9 @@ jobs:
           
       - name: 🚀 Deploy to Cloud Run from Image
         run: |
-          echo "Deploying image: ${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Deploying image: ${{ env.IMAGE_TAG }}"
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image ${{ needs.build-and-push.outputs.image-tag }} \
+            --image ${{ env.IMAGE_TAG }} \
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
@@ -115,7 +122,7 @@ jobs:
           echo "================================================"
           echo "Service URL: ${{ env.SERVICE_URL }}"
           echo "MCP HTTP Endpoint: ${{ env.SERVICE_URL }}/"
-          echo "Deployed Image: ${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Deployed Image: ${{ env.IMAGE_TAG }}"
           echo ""
           echo "To use with MCP Inspector:"
           echo "  npx @modelcontextprotocol/inspector ${{ env.SERVICE_URL }}/"

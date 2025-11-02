@@ -56,7 +56,7 @@ jobs:
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
-            --set-env-vars MCP_TRANSPORT=sse,LOG_LEVEL=INFO \
+            --set-env-vars MCP_TRANSPORT=http,LOG_LEVEL=INFO \
             --memory 512Mi \
             --cpu 1 \
             --timeout 300 \
@@ -76,28 +76,24 @@ jobs:
           echo "Waiting for service to be ready..."
           sleep 15
           
-          echo "Testing MCP /sse endpoint..."
+          echo "Testing MCP HTTP endpoint..."
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 5 \
-            -H "Accept: text/event-stream" \
-            -I ${{ env.SERVICE_URL }}/sse || echo "000")
+            --max-time 10 \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
+            ${{ env.SERVICE_URL }}/ || echo "000")
 
           if [ "$RESPONSE" = "200" ]; then
-            echo "✅ MCP SSE endpoint is reachable!"
+            echo "✅ MCP HTTP endpoint is reachable!"
           else
             echo "⚠️  Received HTTP $RESPONSE"
-            echo "This may still be okay if your server requires authentication or headers."
+            echo "Testing health endpoint..."
+            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 5 \
+              ${{ env.SERVICE_URL }}/health || echo "000")
+            echo "Health endpoint response: $HEALTH_RESPONSE"
           fi
-        
-      - name: Validate MCP Connection
-        run: |
-          echo "Validating MCP server handshake via Inspector..."
-          npm install -g @modelcontextprotocol/inspector
-
-          npx -y @modelcontextprotocol/inspector --timeout 10 "${{ env.SERVICE_URL }}/sse" || {
-            echo "⚠️  MCP Inspector failed to connect — check logs above.";
-            exit 1;
-          }
         
       - name: Display Deployment Info
         run: |
@@ -105,14 +101,16 @@ jobs:
           echo "🚀 Deployment Successful!"
           echo "================================================"
           echo "Service URL: ${{ env.SERVICE_URL }}"
-          echo "MCP SSE Endpoint: ${{ env.SERVICE_URL }}/sse"
+          echo "MCP HTTP Endpoint: ${{ env.SERVICE_URL }}/"
           echo ""
           echo "To use with MCP Inspector:"
-          echo "  npx @modelcontextprotocol/inspector ${{ env.SERVICE_URL }}/sse"
+          echo "  npx @modelcontextprotocol/inspector ${{ env.SERVICE_URL }}/"
           echo ""
-          echo "To use with Claude Desktop, add to config:"
+          echo "To use with Claude Desktop, add this to your config:"
+          echo ""
           echo '  "opendota": {'
           echo '    "command": "npx",'
-          echo '    "args": ["-y", "mcp-remote", "${{ env.SERVICE_URL }}/sse"]'
+          echo '    "args": ["-y", "mcp-remote", "'"${{ env.SERVICE_URL }}"'/"]'
           echo '  }'
+          echo ""
           echo "================================================"

@@ -1,4 +1,4 @@
-name: Validate & Deploy to Cloud Run
+name: Validate, Build, Push & Deploy
 
 on:
   push:
@@ -9,50 +9,62 @@ env:
   PROJECT_ID: opendota-mcp
   SERVICE_NAME: opendota-mcp-server
   REGION: europe-west1
+  DOCKER_IMAGE_TAG: ${{ secrets.DOCKER_USERNAME }}/${{ vars.SERVICE_NAME }}:${{ github.sha }} 
+  LATEST_TAG: ${{ secrets.DOCKER_USERNAME }}/${{ vars.SERVICE_NAME }}:latest
 
 jobs:
-  validate-docker:
+  build-and-push:
     runs-on: ubuntu-latest
-    name: Validate Docker
-    if: contains(github.event.head_commit.message, 'Merge pull request')
+    name: Build & Push to Docker Hub
     steps:
-      - name: Checkout code
+      - name: 📝 Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
+      - name: 🛠 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: 🔑 Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 📦 Build and Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: false
-          tags: ${{ env.SERVICE_NAME }}:test
+          push: true
+          tags: ${{ env.DOCKER_IMAGE_TAG }},${{ env.LATEST_TAG }} 
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          
+      - name: Set Image Tag for subsequent jobs
+        id: set_image
+        run: |
+          echo "IMAGE_TAG=${{ env.DOCKER_IMAGE_TAG }}" >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: ubuntu-latest
     name: Deploy to Cloud Run
-    needs: [validate-docker]
-    if: contains(github.event.head_commit.message, 'Merge pull request')
+    needs: [build-and-push]
+    env:
+      IMAGE_TAG_TO_DEPLOY: ${{ needs.build-and-push.outputs.IMAGE_TAG }}
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
+      - name: 🔑 Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up Cloud SDK
+      - name: 🛠 Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy to Cloud Run from Source
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          
+      - name: 🚀 Deploy to Cloud Run from Image
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --source . \
+            --image ${{ env.LATEST_TAG }} \
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \

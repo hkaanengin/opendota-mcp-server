@@ -6,6 +6,8 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
+from fastapi import Request, Response
 from fastmcp import FastMCP
 
 # Setup logging
@@ -24,7 +26,7 @@ from .client import cleanup_http_client
 from .utils import load_reference_data
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP):
+async def app_lifespan(server):
     """FastMCP lifespan management"""
     logger.info("Starting OpenDota MCP server...")
     
@@ -42,14 +44,14 @@ async def app_lifespan(server: FastMCP):
 # Create server with lifespan
 mcp = FastMCP("OpenDota API Server", lifespan=app_lifespan)
 
-@mcp.app.get("/health")
-async def health_check():
+# Add custom routes using the @custom_route decorator
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request):
     """Health check endpoint for Cloud Run"""
     return {"status": "healthy", "service": "opendota-mcp"}
 
-# Debug endpoint - shows registered tools
-@mcp.app.get("/debug/tools")
-async def list_tools():
+@mcp.custom_route("/debug/tools", methods=["GET"])
+async def list_tools(request: Request):
     """List all registered MCP tools"""
     try:
         # Get tools from the MCP server
@@ -67,8 +69,7 @@ async def list_tools():
         logger.error(f"Error listing tools: {e}")
         return {"status": "error", "message": str(e)}
 
-# Debug endpoint - echo request details
-@mcp.app.post("/debug/echo")
+@mcp.custom_route("/debug/echo", methods=["POST"])
 async def echo_request(request: Request):
     """Echo back request details for debugging"""
     body = await request.body()
@@ -81,31 +82,6 @@ async def echo_request(request: Request):
         "client": request.client.host if request.client else None
     }
 
-# Request logging middleware
-@mcp.app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all incoming requests for debugging"""
-    start_time = datetime.utcnow()
-    
-    # Log request
-    logger.info(f"→ {request.method} {request.url.path}")
-    
-    # Only log body for non-health endpoints to reduce noise
-    if request.url.path not in ["/health"]:
-        body = await request.body()
-        logger.debug(f"Request body size: {len(body)} bytes")
-        if body:
-            logger.debug(f"Body preview: {body.decode('utf-8', errors='ignore')[:200]}")
-    
-    try:
-        response = await call_next(request)
-        duration = (datetime.utcnow() - start_time).total_seconds()
-        logger.info(f"← {request.method} {request.url.path} - {response.status_code} ({duration:.3f}s)")
-        return response
-    except Exception as e:
-        logger.error(f"Request failed: {str(e)}", exc_info=True)
-        return Response(content=str(e), status_code=500)
-        
 def main():
     """Main entry point"""
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()

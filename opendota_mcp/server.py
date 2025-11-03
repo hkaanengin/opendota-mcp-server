@@ -19,7 +19,6 @@ logging.basicConfig(
 
 logger = logging.getLogger("opendota-server")
 
-# Import your existing components
 from .tools import register_all_tools
 from .client import cleanup_http_client
 from .utils import load_reference_data
@@ -37,7 +36,6 @@ async def app_lifespan(server: FastMCP):
     try:
         yield  # Server runs here
     finally:
-        # Shutdown
         await cleanup_http_client()
         logger.info("Server shutdown complete")
 

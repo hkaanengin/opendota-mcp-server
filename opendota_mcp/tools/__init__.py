@@ -1,7 +1,7 @@
 """
 Tools module - registers all MCP tools
 """
-from fastmcp import FastMCP # type: ignore
+from fastmcp import FastMCP
 from .lookup_tools import register_lookup_tools
 from .player_tools import register_player_tools
 from .hero_tools import register_hero_tools

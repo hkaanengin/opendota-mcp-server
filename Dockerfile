@@ -27,7 +27,7 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 8080
 
 # Health check - check the HTTP endpoint instead of SSE
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the server using the installed entry point

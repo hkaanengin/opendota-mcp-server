@@ -85,8 +85,7 @@ async def load_reference_data():
     import os
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    parent_dir = os.path.dirname(current_dir)
-    constants_dir = os.path.join(parent_dir, 'constants')
+    constants_dir = os.path.join(current_dir, 'constants')
     
     logger.info(f"Loading reference data from: {constants_dir}")
     

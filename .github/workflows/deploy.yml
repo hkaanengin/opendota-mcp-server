@@ -16,10 +16,15 @@ jobs:
     name: Build & Push to Docker Hub
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
+      sha-short: ${{ steps.sha.outputs.sha-short }}
     
     steps:
       - name: 📝 Checkout code
         uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: echo "sha-short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: 🛠 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -55,7 +60,8 @@ jobs:
     name: Deploy to Cloud Run
     needs: [build-and-push]
     env:
-      IMAGE_TAG: ${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:latest
+      # Use SHA tag to ensure we deploy the exact image we just built
+      IMAGE_TAG: ${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ github.sha }}
     
     steps:
       - name: 🔑 Authenticate to Google Cloud

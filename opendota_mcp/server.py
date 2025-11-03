@@ -42,6 +42,70 @@ async def app_lifespan(server: FastMCP):
 # Create server with lifespan
 mcp = FastMCP("OpenDota API Server", lifespan=app_lifespan)
 
+@mcp.app.get("/health")
+async def health_check():
+    """Health check endpoint for Cloud Run"""
+    return {"status": "healthy", "service": "opendota-mcp"}
+
+# Debug endpoint - shows registered tools
+@mcp.app.get("/debug/tools")
+async def list_tools():
+    """List all registered MCP tools"""
+    try:
+        # Get tools from the MCP server
+        tools = []
+        if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
+            tool_list = await mcp._mcp_server.list_tools()
+            tools = [{"name": t.name, "description": t.description[:100]} for t in tool_list.tools]
+        
+        return {
+            "status": "ok",
+            "tool_count": len(tools),
+            "tools": tools
+        }
+    except Exception as e:
+        logger.error(f"Error listing tools: {e}")
+        return {"status": "error", "message": str(e)}
+
+# Debug endpoint - echo request details
+@mcp.app.post("/debug/echo")
+async def echo_request(request: Request):
+    """Echo back request details for debugging"""
+    body = await request.body()
+    return {
+        "method": request.method,
+        "url": str(request.url),
+        "headers": dict(request.headers),
+        "body_size": len(body),
+        "body_preview": body.decode('utf-8', errors='ignore')[:500],
+        "client": request.client.host if request.client else None
+    }
+
+# Request logging middleware
+@mcp.app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests for debugging"""
+    start_time = datetime.utcnow()
+    
+    # Log request
+    logger.info(f"→ {request.method} {request.url.path}")
+    
+    # Only log body for non-health endpoints to reduce noise
+    if request.url.path not in ["/health"]:
+        body = await request.body()
+        logger.debug(f"Request body size: {len(body)} bytes")
+        if body:
+            logger.debug(f"Body preview: {body.decode('utf-8', errors='ignore')[:200]}")
+    
+    try:
+        response = await call_next(request)
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.info(f"← {request.method} {request.url.path} - {response.status_code} ({duration:.3f}s)")
+        return response
+    except Exception as e:
+        logger.error(f"Request failed: {str(e)}", exc_info=True)
+        return Response(content=str(e), status_code=500)
+        
 def main():
     """Main entry point"""
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()

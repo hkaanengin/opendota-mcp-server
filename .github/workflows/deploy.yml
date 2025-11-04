@@ -107,7 +107,7 @@ jobs:
             -H "Content-Type: application/json" \
             -X POST \
             -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
-            ${{ env.SERVICE_URL }}/ || echo "000")
+            ${{ env.SERVICE_URL }}/mcp || echo "000")
 
           if [ "$RESPONSE" = "200" ]; then
             echo "✅ MCP HTTP endpoint is reachable!"

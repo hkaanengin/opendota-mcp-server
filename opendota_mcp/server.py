@@ -132,30 +132,43 @@ def main():
     port = int(os.getenv("PORT", "8080"))
     
     if transport == "http":
-        logger.info("Adding Claude.ai compatibility middleware...")
-    
-        middleware_added = False
+        logger.info("Setting up Claude.ai compatibility...")
         
-        if hasattr(mcp, 'app'):
-            logger.info("Found mcp.app")
-            mcp.app.add_middleware(InjectAcceptHeaderMiddleware)
-            middleware_added = True
-        elif hasattr(mcp, '_app'):
-            logger.info("Found mcp._app")
-            mcp._app.add_middleware(InjectAcceptHeaderMiddleware)
-            middleware_added = True
+        middleware_status = {
+            'http_app': False,
+            'sse_app': False, 
+            'streamable_http_app': False
+        }
         
-        if middleware_added:
-            logger.info("✅ Middleware successfully added")
+        if hasattr(mcp, 'http_app') and mcp.http_app is not None:
+            mcp.http_app.add_middleware(InjectAcceptHeaderMiddleware)
+            middleware_status['http_app'] = True
+            logger.info("✅ Middleware added to http_app")
+        
+        if hasattr(mcp, 'sse_app') and mcp.sse_app is not None:
+            mcp.sse_app.add_middleware(InjectAcceptHeaderMiddleware)
+            middleware_status['sse_app'] = True
+            logger.info("✅ Middleware added to sse_app")
+        
+        if hasattr(mcp, 'streamable_http_app') and mcp.streamable_http_app is not None:
+            mcp.streamable_http_app.add_middleware(InjectAcceptHeaderMiddleware)
+            middleware_status['streamable_http_app'] = True
+            logger.info("✅ Middleware added to streamable_http_app (MCP handler)")
+        
+        active_apps = [name for name, status in middleware_status.items() if status]
+        if active_apps:
+            logger.info(f"✅ Middleware configured on: {', '.join(active_apps)}")
         else:
-            logger.error("❌ Failed to add middleware - checking attributes:")
-            logger.error(f"MCP dir: {[x for x in dir(mcp) if 'app' in x.lower()]}")
+            logger.error("❌ WARNING: No middleware added - server may not work!")
+        
+        if not middleware_status['streamable_http_app']:
+            logger.error("❌ CRITICAL: streamable_http_app missing - Claude.ai won't connect!")
         
         logger.info(f"Starting HTTP server on 0.0.0.0:{port}")
         mcp.run(transport="http", host="0.0.0.0", port=port)
     else:
         logger.info("Starting in stdio mode for Claude Desktop")
-        mcp.run()  # This uses stdio by default
+        mcp.run()
 
 if __name__ == '__main__':
     main()

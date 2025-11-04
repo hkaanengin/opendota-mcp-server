@@ -19,7 +19,12 @@ async def get_http_client() -> httpx.AsyncClient:
     global http_client
     if http_client is None:
         http_client = httpx.AsyncClient(
-            timeout=30.0,
+            timeout=httpx.Timeout(
+                connect=10.0,
+                read=120.0,
+                write=10.0,
+                pool=10.0
+            ),
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
         )
         logger.info("HTTP client initialized")

@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from ..client import fetch_api, get_http_client, rate_limiter
 from ..config import OPENDOTA_BASE_URL
 from ..utils import get_account_id
+from typing import List, Dict, Any
 
 logger = logging.getLogger("opendota-server")
 
@@ -14,7 +15,7 @@ def register_match_tools(mcp: FastMCP):
     """Register all match-related tools with the MCP server"""
     
     @mcp.tool()
-    async def get_recent_matches(player_name: str) -> dict:
+    async def get_recent_matches(player_name: str) -> List[Dict[str, Any]]:
         """
         Get player's recent matches.
         
@@ -50,7 +51,7 @@ def register_match_tools(mcp: FastMCP):
         return response.json()
 
     @mcp.tool()
-    async def get_match_details(match_id: int) -> dict:
+    async def get_match_details(match_id: int) -> Dict[str, Any]:
         """
         Get details for a specific match, used for analysing match data in detail.
         

@@ -10,7 +10,6 @@ from datetime import datetime
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
-from starlette.middleware.base import BaseHTTPMiddleware
 
 # Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -27,38 +26,6 @@ from .tools import register_all_tools
 from .client import cleanup_http_client
 from .utils import load_reference_data
 
-class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
-    """
-    FastMCP requires 'text/event-stream' in Accept header, but Claude.ai doesn't send it.
-    This middleware automatically adds it to fix compatibility.
-    """
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path == "/mcp":
-            headers = dict(request.scope["headers"])
-            
-            accept_modified = False
-            new_headers = []
-            
-            for name, value in headers.items():
-                if name == b"accept":
-                    accept_value = value.decode()
-                    if "text/event-stream" not in accept_value:
-                        accept_value = f"{accept_value}, text/event-stream"
-                        logger.debug(f"Injected text/event-stream into Accept header")
-                    new_headers.append((name, accept_value.encode()))
-                    accept_modified = True
-                else:
-                    new_headers.append((name, value))
-            
-            if not accept_modified:
-                new_headers.append((b"accept", b"application/json, text/event-stream"))
-                logger.debug(f"Added missing Accept header")
-            
-            request.scope["headers"] = new_headers
-        
-        response = await call_next(request)
-        return response
-
 @asynccontextmanager
 async def app_lifespan(server):
     """FastMCP lifespan management"""
@@ -68,10 +35,6 @@ async def app_lifespan(server):
     await load_reference_data()
     register_all_tools(server)
     logger.info("SUCCESS: All tools registered")
-    
-    if hasattr(server, '_app'):
-        server._app.add_middleware(InjectAcceptHeaderMiddleware)
-        logger.info("✅ Claude.ai compatibility middleware added")
     
     try:
         yield  # Server runs here
@@ -95,17 +58,8 @@ async def list_tools(request: Request):
         # Get tools from the MCP server
         tools = []
         if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
-            import inspect
-            list_tools_func = mcp._mcp_server.list_tools
-            
-            if inspect.iscoroutinefunction(list_tools_func):
-                tool_list = await list_tools_func()
-            else:
-                tool_list = list_tools_func()
-            
-            if hasattr(tool_list, 'tools'):
-                tools = [{"name": t.name, "description": t.description[:100] if t.description else ""} 
-                        for t in tool_list.tools]
+            tool_list = await mcp._mcp_server.list_tools()
+            tools = [{"name": t.name, "description": t.description[:100]} for t in tool_list.tools]
         
         return JSONResponse({
             "status": "ok",
@@ -113,7 +67,7 @@ async def list_tools(request: Request):
             "tools": tools
         })
     except Exception as e:
-        logger.error(f"Error listing tools: {e}", exc_info=True)
+        logger.error(f"Error listing tools: {e}")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @mcp.custom_route("/debug/echo", methods=["POST"])

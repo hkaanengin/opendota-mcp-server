@@ -1,13 +1,11 @@
 """
-OpenDota MCP Server - Deployment Ready
-Works with Claude Desktop (stdio) AND Cloud Run (HTTP)
+OpenDota MCP Server - Working Version with Monkey Patch
 """
 import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime
-from fastapi import Request, Response
+from fastapi import Request, FastAPI
 from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -45,7 +43,7 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
                     accept_value = value.decode()
                     if "text/event-stream" not in accept_value:
                         accept_value = f"{accept_value}, text/event-stream"
-                        logger.info(f"🔧 Modified Accept header")
+                        logger.info(f"🔧 Added text/event-stream to Accept header")
                     new_headers.append((name, accept_value.encode()))
                     accept_modified = True
                 else:
@@ -53,12 +51,25 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
             
             if not accept_modified:
                 new_headers.append((b"accept", b"application/json, text/event-stream"))
-                logger.info(f"🔧 Added missing Accept header")
+                logger.info(f"🔧 Created Accept header from scratch")
             
             request.scope["headers"] = new_headers
         
         response = await call_next(request)
         return response
+        
+logger.info("Setting up Claude.ai compatibility...")
+
+_original_fastapi_init = FastAPI.__init__
+
+def _patched_fastapi_init(self, *args, **kwargs):
+    """Patched FastAPI.__init__ that auto-adds our middleware"""
+    _original_fastapi_init(self, *args, **kwargs)
+    self.add_middleware(InjectAcceptHeaderMiddleware)
+    logger.debug(f"✅ Auto-injected middleware into FastAPI instance")
+
+FastAPI.__init__ = _patched_fastapi_init
+logger.info("✅ Monkey-patched FastAPI to auto-inject middleware")
 
 @asynccontextmanager
 async def app_lifespan(server):
@@ -76,10 +87,8 @@ async def app_lifespan(server):
         await cleanup_http_client()
         logger.info("Server shutdown complete")
 
-# Create server with lifespan
 mcp = FastMCP("OpenDota API Server", lifespan=app_lifespan)
 
-# Add custom routes using the @custom_route decorator
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request):
     """Health check endpoint for Cloud Run"""
@@ -89,7 +98,6 @@ async def health_check(request: Request):
 async def list_tools(request: Request):
     """List all registered MCP tools"""
     try:
-        # Get tools from the MCP server
         tools = []
         if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
             import inspect
@@ -132,38 +140,6 @@ def main():
     port = int(os.getenv("PORT", "8080"))
     
     if transport == "http":
-        logger.info("Setting up Claude.ai compatibility...")
-        
-        middleware_status = {
-            'http_app': False,
-            'sse_app': False, 
-            'streamable_http_app': False
-        }
-        
-        if hasattr(mcp, 'http_app') and mcp.http_app is not None:
-            mcp.http_app.add_middleware(InjectAcceptHeaderMiddleware)
-            middleware_status['http_app'] = True
-            logger.info("✅ Middleware added to http_app")
-        
-        if hasattr(mcp, 'sse_app') and mcp.sse_app is not None:
-            mcp.sse_app.add_middleware(InjectAcceptHeaderMiddleware)
-            middleware_status['sse_app'] = True
-            logger.info("✅ Middleware added to sse_app")
-        
-        if hasattr(mcp, 'streamable_http_app') and mcp.streamable_http_app is not None:
-            mcp.streamable_http_app.add_middleware(InjectAcceptHeaderMiddleware)
-            middleware_status['streamable_http_app'] = True
-            logger.info("✅ Middleware added to streamable_http_app (MCP handler)")
-        
-        active_apps = [name for name, status in middleware_status.items() if status]
-        if active_apps:
-            logger.info(f"✅ Middleware configured on: {', '.join(active_apps)}")
-        else:
-            logger.error("❌ WARNING: No middleware added - server may not work!")
-        
-        if not middleware_status['streamable_http_app']:
-            logger.error("❌ CRITICAL: streamable_http_app missing - Claude.ai won't connect!")
-        
         logger.info(f"Starting HTTP server on 0.0.0.0:{port}")
         mcp.run(transport="http", host="0.0.0.0", port=port)
     else:

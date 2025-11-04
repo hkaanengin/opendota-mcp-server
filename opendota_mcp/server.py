@@ -34,6 +34,7 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
     """
     async def dispatch(self, request: Request, call_next):
         if request.url.path == "/mcp":
+            logger.info(f"🔍 Intercepting /mcp request")
             headers = dict(request.scope["headers"])
             
             accept_modified = False
@@ -44,7 +45,7 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
                     accept_value = value.decode()
                     if "text/event-stream" not in accept_value:
                         accept_value = f"{accept_value}, text/event-stream"
-                        logger.debug(f"Injected text/event-stream into Accept header")
+                        logger.info(f"🔧 Modified Accept header")
                     new_headers.append((name, accept_value.encode()))
                     accept_modified = True
                 else:
@@ -52,7 +53,7 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
             
             if not accept_modified:
                 new_headers.append((b"accept", b"application/json, text/event-stream"))
-                logger.debug(f"Added missing Accept header")
+                logger.info(f"🔧 Added missing Accept header")
             
             request.scope["headers"] = new_headers
         
@@ -68,10 +69,6 @@ async def app_lifespan(server):
     await load_reference_data()
     register_all_tools(server)
     logger.info("SUCCESS: All tools registered")
-    
-    if hasattr(server, '_app'):
-        server._app.add_middleware(InjectAcceptHeaderMiddleware)
-        logger.info("✅ Claude.ai compatibility middleware added")
     
     try:
         yield  # Server runs here
@@ -135,11 +132,28 @@ def main():
     port = int(os.getenv("PORT", "8080"))
     
     if transport == "http":
-        # Cloud Run deployment - use HTTP
+        logger.info("Adding Claude.ai compatibility middleware...")
+    
+        middleware_added = False
+        
+        if hasattr(mcp, 'app'):
+            logger.info("Found mcp.app")
+            mcp.app.add_middleware(InjectAcceptHeaderMiddleware)
+            middleware_added = True
+        elif hasattr(mcp, '_app'):
+            logger.info("Found mcp._app")
+            mcp._app.add_middleware(InjectAcceptHeaderMiddleware)
+            middleware_added = True
+        
+        if middleware_added:
+            logger.info("✅ Middleware successfully added")
+        else:
+            logger.error("❌ Failed to add middleware - checking attributes:")
+            logger.error(f"MCP dir: {[x for x in dir(mcp) if 'app' in x.lower()]}")
+        
         logger.info(f"Starting HTTP server on 0.0.0.0:{port}")
         mcp.run(transport="http", host="0.0.0.0", port=port)
     else:
-        # Local Claude Desktop - use stdio (default)
         logger.info("Starting in stdio mode for Claude Desktop")
         mcp.run()  # This uses stdio by default
 

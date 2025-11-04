@@ -1,5 +1,5 @@
 """
-OpenDota MCP Server - Working Version with Monkey Patch
+OpenDota MCP Server - Working Version with Deep Hook
 """
 import logging
 import os
@@ -9,8 +9,8 @@ from fastapi import Request, FastAPI
 from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-# Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=log_level,
@@ -25,15 +25,19 @@ from .tools import register_all_tools
 from .client import cleanup_http_client
 from .utils import load_reference_data
 
-class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
+class InjectAcceptHeaderASGIMiddleware:
     """
-    FastMCP requires 'text/event-stream' in Accept header, but Claude.ai doesn't send it.
-    This middleware automatically adds it to fix compatibility.
+    ASGI middleware that injects Accept header at the lowest level.
+    This ensures it works regardless of how FastMCP sets up its apps.
     """
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path == "/mcp":
-            logger.info(f"🔍 Intercepting /mcp request")
-            headers = dict(request.scope["headers"])
+    def __init__(self, app: ASGIApp):
+        self.app = app
+    
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http" and scope["path"] == "/mcp":
+            logger.info(f"🔍 ASGI: Intercepting /mcp request")
+            
+            headers = dict(scope.get("headers", []))
             
             accept_modified = False
             new_headers = []
@@ -43,7 +47,7 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
                     accept_value = value.decode()
                     if "text/event-stream" not in accept_value:
                         accept_value = f"{accept_value}, text/event-stream"
-                        logger.info(f"🔧 Added text/event-stream to Accept header")
+                        logger.info(f"🔧 ASGI: Modified Accept header")
                     new_headers.append((name, accept_value.encode()))
                     accept_modified = True
                 else:
@@ -51,32 +55,32 @@ class InjectAcceptHeaderMiddleware(BaseHTTPMiddleware):
             
             if not accept_modified:
                 new_headers.append((b"accept", b"application/json, text/event-stream"))
-                logger.info(f"🔧 Created Accept header from scratch")
+                logger.info(f"🔧 ASGI: Added Accept header")
             
-            request.scope["headers"] = new_headers
+            scope["headers"] = new_headers
         
-        response = await call_next(request)
-        return response
-        
-logger.info("Setting up Claude.ai compatibility...")
+        await self.app(scope, receive, send)
+
+logger.info("Setting up Claude.ai compatibility at ASGI level...")
 
 _original_fastapi_init = FastAPI.__init__
 
 def _patched_fastapi_init(self, *args, **kwargs):
-    """Patched FastAPI.__init__ that auto-adds our middleware"""
+    """Patched FastAPI.__init__ that wraps the ASGI app"""
     _original_fastapi_init(self, *args, **kwargs)
-    self.add_middleware(InjectAcceptHeaderMiddleware)
-    logger.debug(f"✅ Auto-injected middleware into FastAPI instance")
+    
+    original_app = self.app
+    self.app = InjectAcceptHeaderASGIMiddleware(original_app)
+    logger.info(f"✅ ASGI middleware injected into FastAPI instance")
 
 FastAPI.__init__ = _patched_fastapi_init
-logger.info("✅ Monkey-patched FastAPI to auto-inject middleware")
+logger.info("✅ Monkey-patched FastAPI with ASGI middleware")
 
 @asynccontextmanager
 async def app_lifespan(server):
     """FastMCP lifespan management"""
     logger.info("Starting OpenDota MCP server...")
     
-    # Startup
     await load_reference_data()
     register_all_tools(server)
     logger.info("SUCCESS: All tools registered")

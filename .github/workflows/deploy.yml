@@ -81,7 +81,7 @@ jobs:
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
-            --set-env-vars MCP_TRANSPORT=http,LOG_LEVEL=INFO \
+            --set-env-vars MCP_TRANSPORT=sse,LOG_LEVEL=INFO \
             --memory 512Mi \
             --cpu 1 \
             --timeout 300 \
@@ -101,23 +101,29 @@ jobs:
           echo "Waiting for service to be ready..."
           sleep 15
           
-          echo "Testing MCP HTTP endpoint..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            -H "Content-Type: application/json" \
-            -X POST \
-            -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' \
-            ${{ env.SERVICE_URL }}/mcp || echo "000")
-
-          if [ "$RESPONSE" = "200" ]; then
-            echo "✅ MCP HTTP endpoint is reachable!"
+          echo "Testing health endpoint..."
+          HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 5 \
+            ${{ env.SERVICE_URL }}/health || echo "000")
+          
+          if [ "$HEALTH_RESPONSE" = "200" ]; then
+            echo "✅ Health endpoint is healthy!"
           else
-            echo "⚠️  Received HTTP $RESPONSE"
-            echo "Testing health endpoint..."
-            HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-              --max-time 5 \
-              ${{ env.SERVICE_URL }}/health || echo "000")
-            echo "Health endpoint response: $HEALTH_RESPONSE"
+            echo "⚠️  Health endpoint returned: $HEALTH_RESPONSE"
+            exit 1
+          fi
+          
+          echo "Testing SSE endpoint..."
+          # Test that SSE endpoint accepts connections
+          SSE_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 5 \
+            -H "Accept: text/event-stream" \
+            ${{ env.SERVICE_URL }}/sse || echo "000")
+          
+          if [ "$SSE_TEST" = "200" ] || [ "$SSE_TEST" = "000" ]; then
+            echo "✅ SSE endpoint is accessible!"
+          else
+            echo "⚠️  SSE endpoint returned: $SSE_TEST"
           fi
         
       - name: Display Deployment Info
@@ -126,17 +132,70 @@ jobs:
           echo "🚀 Deployment Successful!"
           echo "================================================"
           echo "Service URL: ${{ env.SERVICE_URL }}"
-          echo "MCP HTTP Endpoint: ${{ env.SERVICE_URL }}/"
+          echo "SSE Endpoint: ${{ env.SERVICE_URL }}/sse"
+          echo "Health Check: ${{ env.SERVICE_URL }}/health"
           echo "Deployed Image: ${{ env.IMAGE_TAG }}"
           echo ""
-          echo "To use with MCP Inspector:"
-          echo "  npx @modelcontextprotocol/inspector ${{ env.SERVICE_URL }}/"
+          echo "================================================"
+          echo "📋 METHOD 1: USE WITH CLAUDE.AI (WEB)"
+          echo "================================================"
+          echo "1. Go to Claude.ai Settings → MCP Servers"
+          echo "2. Click 'Add Server'"
+          echo "3. Enter Server URL: ${{ env.SERVICE_URL }}/sse"
+          echo "4. Save and start chatting!"
           echo ""
-          echo "To use with Claude Desktop, add this to your config:"
+          echo "================================================"
+          echo "🖥️  METHOD 2: USE WITH CLAUDE DESKTOP (REMOTE)"
+          echo "================================================"
+          echo "Connect Claude Desktop to your remote server:"
           echo ""
-          echo '  "opendota": {'
-          echo '    "command": "npx",'
-          echo '    "args": ["-y", "mcp-remote", "'"${{ env.SERVICE_URL }}"'/"]'
-          echo '  }'
+          echo "Add this to your claude_desktop_config.json:"
+          echo ""
+          echo '{
+            "mcpServers": {
+              "opendota": {
+                "command": "npx",
+                "args": [
+                  "-y",
+                  "@modelcontextprotocol/server-remote",
+                  "'"${{ env.SERVICE_URL }}"'/sse"
+                ]
+              }
+            }
+          }'
+          echo ""
+          echo "================================================"
+          echo "💻 METHOD 3: USE WITH CLAUDE DESKTOP (LOCAL)"
+          echo "================================================"
+          echo "Run the server locally on your machine:"
+          echo ""
+          echo "Option A - Using Docker:"
+          echo '{
+            "mcpServers": {
+              "opendota": {
+                "command": "docker",
+                "args": [
+                  "run",
+                  "-i",
+                  "--rm",
+                  "-e", "MCP_TRANSPORT=stdio",
+                  "'"${{ secrets.DOCKER_USERNAME }}"'/opendota-mcp-server:latest"
+                ]
+              }
+            }
+          }'
+          echo ""
+          echo "Option B - Using pip install:"
+          echo '{
+            "mcpServers": {
+              "opendota": {
+                "command": "python",
+                "args": ["-m", "opendota_mcp.server"],
+                "env": {
+                  "MCP_TRANSPORT": "stdio"
+                }
+              }
+            }
+          }'
           echo ""
           echo "================================================"

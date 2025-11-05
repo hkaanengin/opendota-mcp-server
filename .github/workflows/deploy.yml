@@ -81,7 +81,7 @@ jobs:
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
-            --set-env-vars MCP_TRANSPORT=sse,LOG_LEVEL=INFO \
+            --set-env-vars MCP_TRANSPORT=http,LOG_LEVEL=INFO \
             --memory 512Mi \
             --cpu 1 \
             --timeout 300 \
@@ -103,7 +103,7 @@ jobs:
           
           echo "Testing health endpoint..."
           HEALTH_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 5 \
+            --max-time 10 \
             ${{ env.SERVICE_URL }}/health || echo "000")
           
           if [ "$HEALTH_RESPONSE" = "200" ]; then
@@ -113,17 +113,19 @@ jobs:
             exit 1
           fi
           
-          echo "Testing SSE endpoint..."
-          # Test that SSE endpoint accepts connections
-          SSE_TEST=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 5 \
-            -H "Accept: text/event-stream" \
-            ${{ env.SERVICE_URL }}/sse || echo "000")
+          echo "Testing MCP endpoint with tools/list..."
+          MCP_TEST=$(curl -s -X POST \
+            --max-time 10 \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+            ${{ env.SERVICE_URL }}/mcp/tools/list || echo "failed")
           
-          if [ "$SSE_TEST" = "200" ] || [ "$SSE_TEST" = "000" ]; then
-            echo "✅ SSE endpoint is accessible!"
+          if echo "$MCP_TEST" | grep -q "result"; then
+            echo "✅ MCP endpoint is working!"
+            echo "Sample response: $MCP_TEST" | head -c 200
           else
-            echo "⚠️  SSE endpoint returned: $SSE_TEST"
+            echo "⚠️  MCP endpoint test failed or returned unexpected response"
+            echo "Response: $MCP_TEST"
           fi
         
       - name: Display Deployment Info
@@ -132,7 +134,7 @@ jobs:
           echo "🚀 Deployment Successful!"
           echo "================================================"
           echo "Service URL: ${{ env.SERVICE_URL }}"
-          echo "SSE Endpoint: ${{ env.SERVICE_URL }}/sse"
+          echo "MCP Endpoint: ${{ env.SERVICE_URL }}/mcp"
           echo "Health Check: ${{ env.SERVICE_URL }}/health"
           echo "Deployed Image: ${{ env.IMAGE_TAG }}"
           echo ""
@@ -141,7 +143,7 @@ jobs:
           echo "================================================"
           echo "1. Go to Claude.ai Settings → MCP Servers"
           echo "2. Click 'Add Server'"
-          echo "3. Enter Server URL: ${{ env.SERVICE_URL }}/sse"
+          echo "3. Enter Server URL: ${{ env.SERVICE_URL }}/mcp"
           echo "4. Save and start chatting!"
           echo ""
           echo "================================================"
@@ -157,8 +159,8 @@ jobs:
                 "command": "npx",
                 "args": [
                   "-y",
-                  "@modelcontextprotocol/server-remote",
-                  "'"${{ env.SERVICE_URL }}"'/sse"
+                  "@modelcontextprotocol/server-remote-http",
+                  "'"${{ env.SERVICE_URL }}"'/mcp"
                 ]
               }
             }

@@ -54,7 +54,7 @@ async def app_lifespan(server):
         logger.info("🚀 Server ready to accept connections")
         logger.info("=" * 60)
         
-        yield  # Server runs here
+        yield
         
     except Exception as e:
         logger.error(f"❌ Fatal error during startup: {e}", exc_info=True)
@@ -68,38 +68,15 @@ async def app_lifespan(server):
 mcp = FastMCP("OpenDota API Server", lifespan=app_lifespan)
 
 # ============================================================================
-# Request Logging Middleware
-# ============================================================================
-
-@mcp.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all incoming requests"""
-    start_time = time.time()
-    
-    # Log request
-    logger.info(f"→ {request.method} {request.url.path}")
-    logger.debug(f"  Headers: {dict(request.headers)}")
-    metrics.record_request(request.method, request.url.path)
-    
-    # Process request
-    try:
-        response = await call_next(request)
-        duration = time.time() - start_time
-        logger.info(f"← {request.method} {request.url.path} - {response.status_code} ({duration:.3f}s)")
-        return response
-    except Exception as e:
-        duration = time.time() - start_time
-        logger.error(f"← {request.method} {request.url.path} - ERROR ({duration:.3f}s): {e}", exc_info=True)
-        metrics.record_error(e, f"{request.method} {request.url.path}")
-        raise
-
-# ============================================================================
-# Debug Endpoints
+# Debug Endpoints (with built-in logging)
 # ============================================================================
 
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request):
     """Health check endpoint for Cloud Run and monitoring"""
+    logger.debug(f"Health check from {request.client.host if request.client else 'unknown'}")
+    metrics.record_request("GET", "/health")
+    
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     uptime = metrics.get_uptime()
     
@@ -116,6 +93,9 @@ async def health_check(request: Request):
 @mcp.custom_route("/debug/tools", methods=["GET"])
 async def list_tools(request: Request):
     """List all registered MCP tools"""
+    logger.debug("Tools list requested")
+    metrics.record_request("GET", "/debug/tools")
+    
     try:
         tools = []
         if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
@@ -151,11 +131,17 @@ async def list_tools(request: Request):
 @mcp.custom_route("/debug/metrics", methods=["GET"])
 async def get_metrics(request: Request):
     """Get server metrics and statistics"""
+    logger.debug("Metrics requested")
+    metrics.record_request("GET", "/debug/metrics")
+    
     return JSONResponse(metrics.to_dict())
 
 @mcp.custom_route("/debug/logs", methods=["GET"])
 async def get_recent_logs(request: Request):
     """Get recent errors and requests"""
+    logger.debug("Logs requested")
+    metrics.record_request("GET", "/debug/logs")
+    
     return JSONResponse({
         "recent_requests": metrics.last_requests[-20:],
         "recent_errors": metrics.errors[-20:],
@@ -165,6 +151,9 @@ async def get_recent_logs(request: Request):
 @mcp.custom_route("/", methods=["GET"])
 async def root(request: Request):
     """Root endpoint with usage instructions"""
+    logger.debug("Root endpoint accessed")
+    metrics.record_request("GET", "/")
+    
     transport = os.getenv("MCP_TRANSPORT", "stdio")
     
     return JSONResponse({
@@ -186,36 +175,6 @@ async def root(request: Request):
             "setup": "See README.md for configuration instructions"
         }
     })
-
-# ============================================================================
-# Tool Call Monitoring (Hook into FastMCP)
-# ============================================================================
-
-# Wrap tool registration to add monitoring
-_original_register = register_all_tools
-
-def register_all_tools_with_monitoring(server):
-    """Wrap tool registration to add call monitoring"""
-    _original_register(server)
-    
-    # Log registered tools
-    if hasattr(server, '_mcp_server') and hasattr(server._mcp_server, 'list_tools'):
-        import inspect
-        list_tools_func = server._mcp_server.list_tools
-        
-        if inspect.iscoroutinefunction(list_tools_func):
-            import asyncio
-            tool_list = asyncio.run(list_tools_func())
-        else:
-            tool_list = list_tools_func()
-        
-        if hasattr(tool_list, 'tools'):
-            logger.info(f"📦 Registered {len(tool_list.tools)} tools:")
-            for tool in tool_list.tools:
-                logger.info(f"   - {tool.name}")
-
-# Replace with monitoring version
-register_all_tools = register_all_tools_with_monitoring
 
 # ============================================================================
 # Main Entry Point

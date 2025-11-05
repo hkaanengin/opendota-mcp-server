@@ -1,22 +1,22 @@
 """
-OpenDota MCP Server - Multi-Transport Support with Enhanced Debugging
+OpenDota MCP Server - Deployment Ready
+Works with Claude Desktop (stdio) AND Cloud Run (HTTP)
 """
 import logging
 import os
+from re import L
 import sys
-import time
 from contextlib import asynccontextmanager
-from collections import defaultdict
 from datetime import datetime
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
 
-# Logging setup with more detail
+# Setup logging
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=log_level,
-    format="%(asctime)s [%(levelname)s] %(name)s:%(funcName)s:%(lineno)d - %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[logging.StreamHandler(sys.stderr)]
 )
@@ -26,205 +26,80 @@ logger = logging.getLogger("opendota-server")
 from .tools import register_all_tools
 from .client import cleanup_http_client
 from .utils import load_reference_data
-from .classes import ServerMetrics
-
-metrics = ServerMetrics()
-
-# ============================================================================
-# Lifespan and Setup
-# ============================================================================
 
 @asynccontextmanager
 async def app_lifespan(server):
     """FastMCP lifespan management"""
-    logger.info("=" * 60)
     logger.info("Starting OpenDota MCP server...")
-    logger.info(f"Transport: {os.getenv('MCP_TRANSPORT', 'auto')}")
-    logger.info(f"Log Level: {log_level}")
-    logger.info("=" * 60)
+    
+    # Startup
+    await load_reference_data()
+    logger.info("✅ Reference data loaded")
     
     try:
-        await load_reference_data()
-        logger.info("✅ Reference data loaded")
-        
-        register_all_tools(server)
-        logger.info("✅ All tools registered")
-        
-        logger.info("=" * 60)
-        logger.info("🚀 Server ready to accept connections")
-        logger.info("=" * 60)
-        
-        yield
-        
-    except Exception as e:
-        logger.error(f"❌ Fatal error during startup: {e}", exc_info=True)
-        metrics.record_error(e, "startup")
-        raise
+        yield 
     finally:
-        logger.info("Shutting down server...")
         await cleanup_http_client()
-        logger.info("✅ Server shutdown complete")
+        logger.info("Server shutdown complete")
 
+# Create server with lifespan
 mcp = FastMCP("OpenDota API Server", lifespan=app_lifespan)
 
-# ============================================================================
-# Debug Endpoints (with built-in logging)
-# ============================================================================
+logger.info("Registering tools...")
+register_all_tools(mcp)
+logger.info("✅ Tools registered")
 
+# Add custom routes using the @custom_route decorator
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request):
-    """Health check endpoint for Cloud Run and monitoring"""
-    logger.debug(f"Health check from {request.client.host if request.client else 'unknown'}")
-    metrics.record_request("GET", "/health")
-    
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
-    uptime = metrics.get_uptime()
-    
-    return JSONResponse({
-        "status": "healthy",
-        "service": "opendota-mcp",
-        "transport": transport,
-        "uptime_seconds": round(uptime, 2),
-        "uptime_human": f"{int(uptime // 3600)}h {int((uptime % 3600) // 60)}m",
-        "total_requests": metrics.request_count,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    """Health check endpoint for Cloud Run"""
+    return JSONResponse({"status": "healthy", "service": "opendota-mcp"})
 
 @mcp.custom_route("/debug/tools", methods=["GET"])
 async def list_tools(request: Request):
     """List all registered MCP tools"""
-    logger.debug("Tools list requested")
-    metrics.record_request("GET", "/debug/tools")
-    
     try:
+        # Get tools from the MCP server
         tools = []
         if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
-            import inspect
-            list_tools_func = mcp._mcp_server.list_tools
-            
-            if inspect.iscoroutinefunction(list_tools_func):
-                tool_list = await list_tools_func()
-            else:
-                tool_list = list_tools_func()
-            
-            if hasattr(tool_list, 'tools'):
-                tools = [
-                    {
-                        "name": t.name,
-                        "description": t.description[:100] if t.description else "",
-                        "call_count": metrics.tool_calls.get(t.name, 0)
-                    } 
-                    for t in tool_list.tools
-                ]
+            tool_list = await mcp._mcp_server.list_tools()
+            tools = [{"name": t.name, "description": t.description[:100]} for t in tool_list.tools]
         
         return JSONResponse({
             "status": "ok",
             "tool_count": len(tools),
-            "tools": tools,
-            "total_tool_calls": sum(metrics.tool_calls.values())
+            "tools": tools
         })
     except Exception as e:
-        logger.error(f"Error listing tools: {e}", exc_info=True)
-        metrics.record_error(e, "list_tools")
+        logger.error(f"Error listing tools: {e}")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
-@mcp.custom_route("/debug/metrics", methods=["GET"])
-async def get_metrics(request: Request):
-    """Get server metrics and statistics"""
-    logger.debug("Metrics requested")
-    metrics.record_request("GET", "/debug/metrics")
-    
-    return JSONResponse(metrics.to_dict())
-
-@mcp.custom_route("/debug/logs", methods=["GET"])
-async def get_recent_logs(request: Request):
-    """Get recent errors and requests"""
-    logger.debug("Logs requested")
-    metrics.record_request("GET", "/debug/logs")
-    
+@mcp.custom_route("/debug/echo", methods=["POST"])
+async def echo_request(request: Request):
+    """Echo back request details for debugging"""
+    body = await request.body()
     return JSONResponse({
-        "recent_requests": metrics.last_requests[-20:],
-        "recent_errors": metrics.errors[-20:],
-        "error_count": len(metrics.errors)
+        "method": request.method,
+        "url": str(request.url),
+        "headers": dict(request.headers),
+        "body_size": len(body),
+        "body_preview": body.decode('utf-8', errors='ignore')[:500],
+        "client": request.client.host if request.client else None
     })
-
-@mcp.custom_route("/", methods=["GET"])
-async def root(request: Request):
-    """Root endpoint with usage instructions"""
-    logger.debug("Root endpoint accessed")
-    metrics.record_request("GET", "/")
-    
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
-    
-    return JSONResponse({
-        "service": "OpenDota MCP Server",
-        "version": "1.0.0",
-        "transport": transport,
-        "status": "running",
-        "uptime_seconds": round(metrics.get_uptime(), 2),
-        "endpoints": {
-            "health": "/health",
-            "tools": "/debug/tools",
-            "metrics": "/debug/metrics",
-            "logs": "/debug/logs",
-            "mcp_sse": "/sse" if transport == "sse" else None,
-        },
-        "documentation": {
-            "stdio": "For local use with Claude Desktop - configure in claude_desktop_config.json",
-            "sse": "For web use with Claude.ai - add as MCP server with this URL",
-            "setup": "See README.md for configuration instructions"
-        }
-    })
-
-# ============================================================================
-# Main Entry Point
-# ============================================================================
 
 def main():
-    """
-    Main entry point with intelligent transport selection
-    
-    Environment Variables:
-        MCP_TRANSPORT: "stdio" (default), "sse", or "auto"
-        PORT: Port for SSE server (default: 8080)
-        HOST: Host for SSE server (default: 0.0.0.0)
-        LOG_LEVEL: Logging level (default: INFO)
-    """
-    transport = os.getenv("MCP_TRANSPORT", "auto").lower()
+    """Main entry point"""
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     port = int(os.getenv("PORT", "8080"))
-    host = os.getenv("HOST", "0.0.0.0")
     
-    if transport == "auto":
-        if "PORT" in os.environ or "K_SERVICE" in os.environ or "CLOUD_RUN" in os.environ:
-            transport = "sse"
-            logger.info("🔍 Auto-detected cloud environment, using SSE transport")
-        else:
-            transport = "stdio"
-            logger.info("🔍 Auto-detected local environment, using stdio transport")
-    
-    if transport == "sse":
-        logger.info("=" * 60)
-        logger.info("🌐 Starting SSE server")
-        logger.info(f"   Host: {host}")
-        logger.info(f"   Port: {port}")
-        logger.info(f"   MCP endpoint: http://{host}:{port}/sse")
-        logger.info(f"   Health check: http://{host}:{port}/health")
-        logger.info(f"   Metrics: http://{host}:{port}/debug/metrics")
-        logger.info(f"   Logs: http://{host}:{port}/debug/logs")
-        logger.info("=" * 60)
-        mcp.run(transport="sse", host=host, port=port)
-    
-    elif transport == "stdio":
-        logger.info("=" * 60)
-        logger.info("🖥️  Starting in stdio mode for Claude Desktop")
-        logger.info("   Configure this in your claude_desktop_config.json")
-        logger.info("=" * 60)
-        mcp.run(transport="stdio")
-    
+    if transport == "http":
+        # Cloud Run deployment - use HTTP
+        logger.info(f"Starting HTTP server on 0.0.0.0:{port}")
+        mcp.run(transport="http", host="0.0.0.0", port=port)
     else:
-        logger.error(f"❌ Unknown transport: {transport}")
-        logger.error("   Valid options: 'stdio', 'sse', or 'auto'")
-        sys.exit(1)
+        # Local Claude Desktop - use stdio (default)
+        logger.info("Starting in stdio mode for Claude Desktop")
+        mcp.run()  # This uses stdio by default
 
 if __name__ == '__main__':
     main()

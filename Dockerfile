@@ -18,12 +18,10 @@ RUN pip install --no-cache-dir -e .
 # Copy application code (including tools folder)
 COPY opendota_mcp/ ./opendota_mcp/
 
-# Environment variables with sensible defaults
+
 ENV PYTHONUNBUFFERED=1 \
-    MCP_TRANSPORT=auto \
-    PORT=8080 \
-    HOST=0.0.0.0 \
-    LOG_LEVEL=INFO
+    MCP_TRANSPORT=http \
+    PORT=8080
 
 # Expose port
 EXPOSE 8080

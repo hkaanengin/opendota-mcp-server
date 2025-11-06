@@ -60,7 +60,7 @@ jobs:
     name: Deploy to Cloud Run
     needs: [build-and-push]
     env:
-      IMAGE_TAG: ${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ needs.build-and-push.outputs.sha-short }}
+      IMAGE_TAG: docker.io/${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ needs.build-and-push.outputs.sha-short }}
     
     steps:
       - name: 🔑 Authenticate to Google Cloud
@@ -112,20 +112,20 @@ jobs:
             echo "⚠️  Health endpoint returned: $HEALTH_RESPONSE"
             exit 1
           fi
-          
-          echo "Testing MCP endpoint with tools/list..."
-          MCP_TEST=$(curl -s -X POST \
+    
+          echo "Testing tools debug endpoint..."
+          TOOLS_RESPONSE=$(curl -s -X GET \
             --max-time 10 \
-            -H "Content-Type: application/json" \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-            ${{ env.SERVICE_URL }}/mcp/tools/list || echo "failed")
+            ${{ env.SERVICE_URL }}/debug/tools || echo "failed")
           
-          if echo "$MCP_TEST" | grep -q "result"; then
-            echo "✅ MCP endpoint is working!"
-            echo "Sample response: $MCP_TEST" | head -c 200
+          if echo "$TOOLS_RESPONSE" | grep -q "tool_count"; then
+            echo "✅ Tools endpoint is working!"
+            TOOL_COUNT=$(echo "$TOOLS_RESPONSE" | grep -o '"tool_count":[0-9]*' | grep -o '[0-9]*')
+            echo "Found $TOOL_COUNT tools registered"
           else
-            echo "⚠️  MCP endpoint test failed or returned unexpected response"
-            echo "Response: $MCP_TEST"
+            echo "⚠️  Tools endpoint test failed"
+            echo "Response: $TOOLS_RESPONSE"
+            exit 1
           fi
         
       - name: Display Deployment Info
@@ -134,7 +134,7 @@ jobs:
           echo "🚀 Deployment Successful!"
           echo "================================================"
           echo "Service URL: ${{ env.SERVICE_URL }}"
-          echo "MCP Endpoint: ${{ env.SERVICE_URL }}/mcp"
+          echo "MCP Endpoint: ${{ env.SERVICE_URL }}/mcp/v1"
           echo "Health Check: ${{ env.SERVICE_URL }}/health"
           echo "Deployed Image: ${{ env.IMAGE_TAG }}"
           echo ""
@@ -143,7 +143,7 @@ jobs:
           echo "================================================"
           echo "1. Go to Claude.ai Settings → MCP Servers"
           echo "2. Click 'Add Server'"
-          echo "3. Enter Server URL: ${{ env.SERVICE_URL }}/mcp"
+          echo "3. Enter Server URL: ${{ env.SERVICE_URL }}/mcp/v1"
           echo "4. Save and start chatting!"
           echo ""
           echo "================================================"
@@ -160,7 +160,7 @@ jobs:
                 "args": [
                   "-y",
                   "@modelcontextprotocol/server-remote-http",
-                  "'"${{ env.SERVICE_URL }}"'/mcp"
+                  "'"${{ env.SERVICE_URL }}"'/mcp/v1"
                 ]
               }
             }

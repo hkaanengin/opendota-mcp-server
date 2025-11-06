@@ -116,15 +116,24 @@ jobs:
           echo "Testing tools debug endpoint..."
           TOOLS_RESPONSE=$(curl -s -X GET \
             --max-time 10 \
-            ${{ env.SERVICE_URL }}/debug/tools || echo "failed")
-          
-          if echo "$TOOLS_RESPONSE" | grep -q "tool_count"; then
+            -w "\nHTTP_CODE:%{http_code}" \
+            https://opendota-mcp-server-jylza6gata-ew.a.run.app/debug/tools 2>&1 || echo "CURL_FAILED")
+
+          echo "Raw response: $TOOLS_RESPONSE"
+
+          HTTP_CODE=$(echo "$TOOLS_RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+          BODY=$(echo "$TOOLS_RESPONSE" | grep -v "HTTP_CODE:")
+
+          echo "HTTP Code: $HTTP_CODE"
+          echo "Response Body: $BODY"
+
+          if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "tool_count"; then
             echo "✅ Tools endpoint is working!"
-            TOOL_COUNT=$(echo "$TOOLS_RESPONSE" | grep -o '"tool_count":[0-9]*' | grep -o '[0-9]*')
+            TOOL_COUNT=$(echo "$BODY" | grep -o '"tool_count":[0-9]*' | grep -o '[0-9]*' | head -1)
             echo "Found $TOOL_COUNT tools registered"
           else
-            echo "⚠️  Tools endpoint test failed"
-            echo "Response: $TOOLS_RESPONSE"
+            echo "⚠️  Tools endpoint test failed (HTTP: $HTTP_CODE)"
+            echo "Response: $BODY"
             exit 1
           fi
         

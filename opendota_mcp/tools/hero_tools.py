@@ -78,15 +78,23 @@ def register_hero_tools(mcp: FastMCP):
             hero_id = await resolve_hero(hero_id)
             result = await fetch_api(f"/heroes/{hero_id}/itemPopularity")
 
-            structured_result = {
-                    game_phase: {resolve_item_name(item_id): count for item_id, count in items.items()}
-                    for game_phase, items in result.items()
-                    }
+            structured_result = {}
+            
+            for game_phase, items in result.items():
+                phase_items = {}
+                for item_id, count in items.items():
+                    item_name = await resolve_item_name(item_id)
+                    phase_items[item_name] = count
+                structured_result[game_phase] = phase_items
 
             return structured_result
+        
         except ValueError as e:
             logger.error(f"Error resolving hero: {e}")
             return {"error": str(e)}
+        except Exception as e:
+            logger.error(f"Unexpected error in get_hero_item_popularity: {e}", exc_info=True)
+            return {"error": f"Unexpected error: {str(e)}"}
 
     @mcp.tool()
     async def get_hero_stats() -> dict:

@@ -363,3 +363,32 @@ async def convert_lane_name_to_id_logic(lane_name: str) -> Dict[str, Any]:
         "error": f"Lane '{lane_name}' not recognized",
         "valid_options": ["mid", "safe lane", "offlane", "jungle", "pos 1-4"]
     }
+
+
+async def resolve_item_name(item_id) -> str:
+    def format_item_name(internal_name: str) -> str:
+        """Convert internal_name to display format with lowercase articles."""
+        words = internal_name.replace("_", " ").split()
+        lowercase_words = {'of', 'the', 'and', 'a', 'an', 'in', 'on', 'at', 'to'}
+        
+        formatted = []
+        for i, word in enumerate(words):
+            if i == 0 or word not in lowercase_words:
+                formatted.append(word.capitalize())
+            else:
+                formatted.append(word.lower())
+        
+        return " ".join(formatted)
+
+    if REFERENCE_DATA.get('item_ids'):
+        item_id_str = str(item_id)
+        if item_id_str in REFERENCE_DATA['item_ids']:
+            item_name = REFERENCE_DATA['item_ids'][item_id_str]
+            logger.info(f"Found item {item_id} ({item_name}) in reference data")
+            return format_item_name(item_name)
+        else:
+            logger.info(f"Item with ID {item_id} not found in reference data, returning {item_id}")
+            return item_id
+    else:
+        logger.info(f"Item with ID {item_id} not found in reference data, returning {item_id}")
+        return item_id

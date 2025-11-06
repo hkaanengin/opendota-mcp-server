@@ -1,12 +1,12 @@
 """
 Hero-related tools
 """
-from typing import Dict, Union
+from typing import Dict, Union, List, Any
 import logging
 from fastmcp import FastMCP
 from ..client import fetch_api
 from ..utils import simplify_response
-from ..resolvers import resolve_hero
+from ..resolvers import resolve_hero, resolve_item_name
 
 logger = logging.getLogger("opendota-server")
 
@@ -15,7 +15,7 @@ def register_hero_tools(mcp: FastMCP):
     """Register all hero-related tools with the MCP server"""
     
     @mcp.tool()
-    async def get_heroes() -> dict:
+    async def get_heroes() -> List[Dict[str, Any]]:
         """
         Get comprehensive list of all available heroes with their attributes and basic information.
         
@@ -32,7 +32,7 @@ def register_hero_tools(mcp: FastMCP):
         return gh_data
 
     @mcp.tool()
-    async def get_hero_matchups(hero_id: Union[int, str]) -> dict:
+    async def get_hero_matchups(hero_id: Union[int, str]) -> List[Dict[str, Any]]:
         """
         Get results against other heroes for a specific hero (win/loss rates, counter-picks).
         
@@ -47,10 +47,15 @@ def register_hero_tools(mcp: FastMCP):
         try:
             hero_id = await resolve_hero(hero_id)
             result = await fetch_api(f"/heroes/{hero_id}/matchups")
-            # Wrap list response in a dict
-            if isinstance(result, list):
-                return {"matchups": result}
-            return result
+
+            structured_result = [{'hero_id': resolve_hero(item['hero_id']),
+                                'games': item['games_played'],
+                                'win': item['win'],
+                                'loss': item['games_played'] - item['win'],
+                                'win_rate': (item['win']/item['games_played']) * 100
+                                } for item in result]
+                           
+            return structured_result
         except ValueError as e:
             logger.error(f"Error resolving hero: {e}")
             return {"error": str(e)}
@@ -71,7 +76,14 @@ def register_hero_tools(mcp: FastMCP):
         """
         try:
             hero_id = await resolve_hero(hero_id)
-            return await fetch_api(f"/heroes/{hero_id}/itemPopularity")
+            result = await fetch_api(f"/heroes/{hero_id}/itemPopularity")
+
+            structured_result = {
+                    game_phase: {resolve_item_name(item_id): count for item_id, count in items.items()}
+                    for game_phase, items in result.items()
+                    }
+
+            return structured_result
         except ValueError as e:
             logger.error(f"Error resolving hero: {e}")
             return {"error": str(e)}

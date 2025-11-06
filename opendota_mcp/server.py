@@ -62,7 +62,7 @@ async def list_tools(request: Request):
         # Get tools from the MCP server
         tools = []
         if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
-            tool_list = await mcp._mcp_server.list_tools()
+            tool_list = mcp._mcp_server.list_tools()
             tools = [{"name": t.name, "description": t.description[:100]} for t in tool_list.tools]
         
         return JSONResponse({

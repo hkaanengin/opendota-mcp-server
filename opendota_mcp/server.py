@@ -59,20 +59,64 @@ async def health_check(request: Request):
 async def list_tools(request: Request):
     """List all registered MCP tools"""
     try:
-        # Get tools from the MCP server
         tools = []
-        if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
-            tool_list = mcp._mcp_server.list_tools()
-            tools = [{"name": t.name, "description": t.description[:100]} for t in tool_list.tools]
+        tool_count = 0
         
+        if hasattr(mcp, '_mcp_server'):
+            mcp_server = mcp._mcp_server
+            logger.info(f"Found _mcp_server: {type(mcp_server)}")
+            
+            if hasattr(mcp_server, 'list_tools'):
+                try:
+                    # Call the function (it might be async)
+                    tool_list_result = mcp_server.list_tools()
+                    logger.info(f"list_tools() returned: {type(tool_list_result)}")
+                    
+                    # Check if it's a coroutine (async function)
+                    if hasattr(tool_list_result, '__await__'):
+                        tool_list_result = await tool_list_result
+                        logger.info(f"After await: {type(tool_list_result)}")
+                    
+                    # Now check if result has 'tools' attribute
+                    if hasattr(tool_list_result, 'tools'):
+                        for t in tool_list_result.tools:
+                            tool_info = {
+                                "name": getattr(t, 'name', 'unknown'),
+                                "description": "No description"
+                            }
+                            
+                            if hasattr(t, 'description') and t.description:
+                                desc = str(t.description)
+                                tool_info["description"] = desc[:100] + ("..." if len(desc) > 100 else "")
+                            
+                            tools.append(tool_info)
+                        tool_count = len(tools)
+                        logger.info(f"Successfully extracted {tool_count} tools")
+                    else:
+                        logger.warning(f"tool_list_result has no 'tools' attribute. Attributes: {dir(tool_list_result)}")
+                        
+                except Exception as e:
+                    logger.error(f"Error calling list_tools(): {e}", exc_info=True)
+            else:
+                logger.warning("_mcp_server has no 'list_tools' method")
+        else:
+            logger.warning("mcp has no '_mcp_server' attribute")
+
         return JSONResponse({
-            "status": "ok",
-            "tool_count": len(tools),
-            "tools": tools
+            "status": "ok" if tool_count > 0 else "warning",
+            "tool_count": tool_count,
+            "tools": tools,
+            "message": f"Found {tool_count} registered tools" if tool_count > 0 else "No tools found"
         })
+        
     except Exception as e:
-        logger.error(f"Error listing tools: {e}")
-        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+        logger.error(f"Unexpected error in list_tools endpoint: {e}", exc_info=True)
+        return JSONResponse({
+            "status": "error", 
+            "message": str(e),
+            "tool_count": 0,
+            "tools": []
+        }, status_code=500)
 
 @mcp.custom_route("/debug/echo", methods=["POST"])
 async def echo_request(request: Request):

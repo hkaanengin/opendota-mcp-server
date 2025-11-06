@@ -20,7 +20,6 @@ def register_all_tools(mcp: FastMCP):
     register_match_tools(mcp)
     register_misc_tools(mcp)
     
-    # Optional: Log count after registration
     try:
         if hasattr(mcp, '_mcp_server') and hasattr(mcp._mcp_server, 'list_tools'):
             tool_list = mcp._mcp_server.list_tools()

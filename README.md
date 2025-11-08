@@ -137,7 +137,7 @@ After running `pip install -e .`, add to your `claude_desktop_config.json`:
         "-i",
         "--rm",
         "-e", "MCP_TRANSPORT=stdio",
-        "yourusername/opendota-mcp-server:latest"
+        "hkaanengin/opendota-mcp-server:latest"
       ]
     }
   }
@@ -260,7 +260,7 @@ Contributions are welcome! Please:
 ## Support
 
 For issues, questions, or contributions:
-- Open an issue on [GitHub](https://github.com/yourusername/opendota-mcp-server/issues)
+- Open an issue on [GitHub](https://github.com/hkaanengin/opendota-mcp-server/issues)
 - Check existing issues for solutions
 - Review the [OpenDota API documentation](https://docs.opendota.com)
 

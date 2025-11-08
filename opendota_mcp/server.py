@@ -59,60 +59,36 @@ async def health_check(request: Request):
 async def list_tools(request: Request):
     """List all registered MCP tools"""
     try:
+        # Use the public get_tools() API (async)
+        tools_dict = await mcp.get_tools()
+
         tools = []
-        tool_count = 0
-        
-        if hasattr(mcp, '_mcp_server'):
-            mcp_server = mcp._mcp_server
-            logger.info(f"Found _mcp_server: {type(mcp_server)}")
-            
-            if hasattr(mcp_server, 'list_tools'):
-                try:
-                    # Call the function (it might be async)
-                    tool_list_result = mcp_server.list_tools()
-                    logger.info(f"list_tools() returned: {type(tool_list_result)}")
-                    
-                    # Check if it's a coroutine (async function)
-                    if hasattr(tool_list_result, '__await__'):
-                        tool_list_result = await tool_list_result
-                        logger.info(f"After await: {type(tool_list_result)}")
-                    
-                    # Now check if result has 'tools' attribute
-                    if hasattr(tool_list_result, 'tools'):
-                        for t in tool_list_result.tools:
-                            tool_info = {
-                                "name": getattr(t, 'name', 'unknown'),
-                                "description": "No description"
-                            }
-                            
-                            if hasattr(t, 'description') and t.description:
-                                desc = str(t.description)
-                                tool_info["description"] = desc[:100] + ("..." if len(desc) > 100 else "")
-                            
-                            tools.append(tool_info)
-                        tool_count = len(tools)
-                        logger.info(f"Successfully extracted {tool_count} tools")
-                    else:
-                        logger.warning(f"tool_list_result has no 'tools' attribute. Attributes: {dir(tool_list_result)}")
-                        
-                except Exception as e:
-                    logger.error(f"Error calling list_tools(): {e}", exc_info=True)
-            else:
-                logger.warning("_mcp_server has no 'list_tools' method")
-        else:
-            logger.warning("mcp has no '_mcp_server' attribute")
+        for name, tool in tools_dict.items():
+            tool_info = {
+                "name": tool.name,
+                "description": tool.description or "No description"
+            }
+
+            # Truncate long descriptions
+            if len(tool_info["description"]) > 100:
+                tool_info["description"] = tool_info["description"][:100] + "..."
+
+            tools.append(tool_info)
+
+        tool_count = len(tools)
+        logger.info(f"Successfully listed {tool_count} registered tools")
 
         return JSONResponse({
-            "status": "ok" if tool_count > 0 else "warning",
+            "status": "ok",
             "tool_count": tool_count,
             "tools": tools,
-            "message": f"Found {tool_count} registered tools" if tool_count > 0 else "No tools found"
+            "message": f"Found {tool_count} registered tools"
         })
-        
+
     except Exception as e:
-        logger.error(f"Unexpected error in list_tools endpoint: {e}", exc_info=True)
+        logger.error(f"Error listing tools: {e}", exc_info=True)
         return JSONResponse({
-            "status": "error", 
+            "status": "error",
             "message": str(e),
             "tool_count": 0,
             "tools": []

@@ -117,7 +117,7 @@ jobs:
           TOOLS_RESPONSE=$(curl -s -X GET \
             --max-time 10 \
             -w "\nHTTP_CODE:%{http_code}" \
-            https://opendota-mcp-server-jylza6gata-ew.a.run.app/debug/tools 2>&1 || echo "CURL_FAILED")
+            ${{ env.SERVICE_URL }}/debug/tools 2>&1 || echo "CURL_FAILED")
 
           echo "Raw response: $TOOLS_RESPONSE"
 

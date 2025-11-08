@@ -30,14 +30,22 @@ from .utils import load_reference_data
 @asynccontextmanager
 async def app_lifespan(server):
     """FastMCP lifespan management"""
+    from .config import OPENDOTA_API_KEY
+
     logger.info("Starting OpenDota MCP server...")
-    
+
+    # Check API key status
+    if OPENDOTA_API_KEY:
+        logger.info("✅ OpenDota API key configured (higher rate limits enabled)")
+    else:
+        logger.info("ℹ️  No API key - using anonymous access (50 req/min)")
+
     # Startup
     await load_reference_data()
     logger.info("✅ Reference data loaded")
-    
+
     try:
-        yield 
+        yield
     finally:
         await cleanup_http_client()
         logger.info("Server shutdown complete")

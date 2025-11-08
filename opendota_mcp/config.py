@@ -1,12 +1,20 @@
 """
 Configuration and constants for OpenDota MCP Server
 """
-from typing import Dict, Any
+import os
+from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # API Configuration
 OPENDOTA_BASE_URL = "https://api.opendota.com/api"
 
-# Rate limiting configuration (requests per minute)
+# Optional API key (for higher rate limits)
+OPENDOTA_API_KEY: Optional[str] = os.getenv("OPENDOTA_API_KEY") or None
+
+# Default: 50 for anonymous
 RATE_LIMIT_RPM = 50
 
 # Player cache - pre-populated with known players

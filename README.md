@@ -219,9 +219,13 @@ docker run -p 8080:8080 \
 
 ### Environment Variables
 
-Create a `.env` file:
+Create a `.env` file in the project root (or copy from `.env.example`):
 
 ```env
+# OpenDota API Key (optional)
+# Get your API key from: https://www.opendota.com/api-keys
+OPENDOTA_API_KEY=
+
 # Logging level (DEBUG, INFO, WARNING, ERROR)
 LOG_LEVEL=INFO
 
@@ -232,13 +236,41 @@ MCP_TRANSPORT=stdio
 PORT=8080
 ```
 
-## API Rate Limits
+### OpenDota API Key (Optional)
 
-OpenDota API limits:
-- **Anonymous**: 60 requests/minute
-- **Registered**: Higher limits with API key (not required)
+An API key is **optional** but recommended for higher rate limits and better performance.
 
-This server defaults to 50 req/min with automatic rate limiting and wait handling.
+**Rate Limits:**
+- **Without API key**: 60 requests/minute (anonymous)
+- **With API key**: Higher limits for registered users
+
+**How to get an API key:**
+
+1. Visit [https://www.opendota.com/api-keys](https://www.opendota.com/api-keys)
+2. Sign in with your Steam account
+3. Click "Create API Key"
+4. Copy the generated API key
+5. Add it to your `.env` file:
+   ```env
+   OPENDOTA_API_KEY=your-api-key-here
+   ```
+6. Restart the server
+
+The server will automatically detect and use the API key when configured. You'll see a confirmation message in the logs:
+```
+✅ OpenDota API key configured (higher rate limits enabled)
+```
+
+### Player Cache
+
+Pre-populate known players in `opendota_mcp/config.py` for faster lookups:
+
+```python
+PLAYER_CACHE: Dict[str, str] = {
+    "player_name": "account_id",
+    # Add your frequently queried players
+}
+```
 
 ## Contributing
 

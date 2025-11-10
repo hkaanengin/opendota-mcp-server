@@ -43,7 +43,6 @@ async def resolve_hero(hero: Optional[Union[int, str]]) -> Optional[int]:
     logger.info(f"RESOLVED: hero '{hero}' -> ID {hero_id} ({result.get('localized_name')})")
     return hero_id
 
-
 async def resolve_hero_list(heroes: Optional[Union[int, str, List[Union[int, str]]]]) -> Optional[Union[int, List[int]]]:
     """
     Internal: Resolve hero names/IDs to hero IDs (supports lists).
@@ -64,7 +63,6 @@ async def resolve_hero_list(heroes: Optional[Union[int, str, List[Union[int, str
         return resolved
     else:
         return await resolve_hero(heroes)
-
 
 async def resolve_lane(lane: Optional[Union[int, str]]) -> Optional[int]:
     """
@@ -100,7 +98,6 @@ async def resolve_lane(lane: Optional[Union[int, str]]) -> Optional[int]:
     logger.info(f"RESOLVED: lane '{lane}' -> ID {lane_id} ({result.get('description')})")
     return lane_id
 
-
 async def resolve_account_ids(account_ids: Optional[Union[str, List[str]]]) -> Optional[List[int]]:
     """
     Internal: Resolve player names to account IDs (supports lists).
@@ -127,7 +124,6 @@ async def resolve_account_ids(account_ids: Optional[Union[str, List[str]]]) -> O
             resolved.append(int(resolved_id))
     
     return resolved
-
 
 def resolve_stat_field(field: str) -> str:
     """
@@ -364,7 +360,6 @@ async def convert_lane_name_to_id_logic(lane_name: str) -> Dict[str, Any]:
         "valid_options": ["mid", "safe lane", "offlane", "jungle", "pos 1-4"]
     }
 
-
 async def resolve_item_name(item_id) -> str:
     def format_item_name(internal_name: str) -> str:
         """Convert internal_name to display format with lowercase articles."""
@@ -392,3 +387,79 @@ async def resolve_item_name(item_id) -> str:
     else:
         logger.info(f"Item with ID {item_id} not found in reference data, returning {item_id}")
         return item_id
+
+def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract match sections as a dictionary (no file I/O).
+
+    Use this in MCP tools to split large match data into manageable sections.
+
+    Args:
+        data: Match data dictionary (can be raw API response or JSON-RPC wrapped)
+
+    Returns:
+        Dictionary with section names as keys and their data as values
+
+    Raises:
+        ValueError: If match data structure is invalid or missing required fields
+        TypeError: If data is not a dictionary
+
+    Example:
+        >>> from opendota_mcp.split_parsed_match import extract_match_sections
+        >>> response = await fetch_api("/matches/12345")
+        >>> sections = extract_match_sections(response)
+        >>> players = sections['players']
+        >>> teamfights = sections['teamfights']
+        >>> metadata = sections['metadata']
+    """
+    # Handle JSON-RPC wrapper (if present)
+    try:
+        if 'result' in data and 'structuredContent' in data.get('result', {}):
+            match = data['result']['structuredContent']
+            logger.debug("Extracted match from JSON-RPC result wrapper")
+        elif 'structuredContent' in data:
+            match = data['structuredContent']
+            logger.debug("Extracted match from structuredContent")
+        elif 'match_id' in data and 'players' in data:
+            match = data
+            logger.debug("Using data directly as match")
+        else:
+            logger.error(f"Could not find match data. Keys: {list(data.keys())}")
+            raise ValueError(
+                f"Could not find match data in JSON. Top-level keys: {list(data.keys())}"
+            )
+    except (KeyError, AttributeError) as e:
+        logger.error(f"Data structure error: {e}")
+        raise ValueError(f"Invalid data structure: {e}")
+
+    # Validate match data
+    if not isinstance(match, dict):
+        logger.error(f"Match data is not a dictionary: {type(match).__name__}")
+        raise ValueError(f"Match data must be a dictionary, got {type(match).__name__}")
+
+    # Extract sections into a dictionary
+    sections = {}
+
+    section_keys = [
+        'players', 'teamfights', 'objectives', 'chat', 'picks_bans',
+        'radiant_gold_adv', 'radiant_xp_adv', 'cosmetics', 'od_data',
+        'all_word_counts', 'my_word_counts'
+    ]
+
+    for section in section_keys:
+        if section in match:
+            sections[section] = match[section]
+
+    logger.debug(f"Extracted {len(sections)} sections: {list(sections.keys())}")
+
+    # Add metadata (all scalar values)
+    try:
+        metadata = {k: v for k, v in match.items()
+                    if not isinstance(v, (list, dict)) or k in ['all_word_counts', 'my_word_counts']}
+        sections['metadata'] = metadata
+        logger.debug(f"Extracted metadata with {len(metadata)} fields")
+    except AttributeError as e:
+        logger.error(f"Failed to extract metadata: {e}")
+        raise ValueError(f"Failed to extract metadata: {e}")
+
+    return sections

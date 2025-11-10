@@ -261,17 +261,6 @@ The server will automatically detect and use the API key when configured. You'll
 ✅ OpenDota API key configured (higher rate limits enabled)
 ```
 
-### Player Cache
-
-Pre-populate known players in `opendota_mcp/config.py` for faster lookups:
-
-```python
-PLAYER_CACHE: Dict[str, str] = {
-    "player_name": "account_id",
-    # Add your frequently queried players
-}
-```
-
 ## Contributing
 
 Contributions are welcome! Please:

@@ -30,6 +30,7 @@ def register_match_tools(mcp: FastMCP):
         try:
             account_id = await get_account_id(player_name)
             result = await fetch_api(f"/players/{account_id}/recentMatches")
+            logger.info(f"Recent matches for '{player_name}' fetched successfully")
 
             structured_result = [
                 {
@@ -68,12 +69,20 @@ def register_match_tools(mcp: FastMCP):
         Returns:
             Dictionary with parse request status
         """
-        client = await get_http_client()
-        await rate_limiter.acquire()
-        
-        response = await client.post(f"{OPENDOTA_BASE_URL}/request/{match_id}")
-        response.raise_for_status()
-        return response.json()
+        try:
+            client = await get_http_client()
+            await rate_limiter.acquire()
+            
+            response = await client.post(f"{OPENDOTA_BASE_URL}/request/{match_id}")
+            response.raise_for_status()
+            result = response.json()
+            
+            logger.info(f"Successfully requested parse for match {match_id}")
+            
+            return result
+        except Exception as e:
+            logger.error(f"Failed to request parse for match {match_id}: {str(e)}")
+            raise
 
     @mcp.tool()
     async def get_match_details(match_id: int) -> Dict[str, Any]:

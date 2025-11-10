@@ -94,3 +94,27 @@ VALID_STAT_FIELDS = {
     "stomp": "stomp", "stomps": "stomp",
     "loss": "loss", "losses": "loss", "lose": "loss",
 }
+
+def format_rank_tier(rank_tier):
+    if not rank_tier:
+        return None
+    
+    ranks = {
+        1: "Herald",
+        2: "Guardian",
+        3: "Crusader",
+        4: "Archon",
+        5: "Legend",
+        6: "Ancient",
+        7: "Divine",
+        8: "Immortal",
+    }
+    
+    tier = rank_tier // 10
+    stars = min(rank_tier % 10, 5)
+    
+    if tier == 8:
+        return "Immortal"
+    
+    rank_name = ranks.get(tier, "Unknown")
+    return f"{rank_name} {stars}" if rank_name else None

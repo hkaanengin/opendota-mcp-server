@@ -416,13 +416,13 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if 'result' in data and 'structuredContent' in data.get('result', {}):
             match = data['result']['structuredContent']
-            logger.debug("Extracted match from JSON-RPC result wrapper")
+            logger.info("Extracted match from JSON-RPC result wrapper")
         elif 'structuredContent' in data:
             match = data['structuredContent']
-            logger.debug("Extracted match from structuredContent")
+            logger.info("Extracted match from structuredContent")
         elif 'match_id' in data and 'players' in data:
             match = data
-            logger.debug("Using data directly as match")
+            logger.info("Using data directly as match")
         else:
             logger.error(f"Could not find match data. Keys: {list(data.keys())}")
             raise ValueError(
@@ -450,14 +450,14 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
         if section in match:
             sections[section] = match[section]
 
-    logger.debug(f"Extracted {len(sections)} sections: {list(sections.keys())}")
+    logger.info(f"Extracted {len(sections)} sections: {list(sections.keys())}")
 
     # Add metadata (all scalar values)
     try:
         metadata = {k: v for k, v in match.items()
                     if not isinstance(v, (list, dict)) or k in ['all_word_counts', 'my_word_counts']}
         sections['metadata'] = metadata
-        logger.debug(f"Extracted metadata with {len(metadata)} fields")
+        logger.info(f"Extracted metadata with {len(metadata)} fields")
     except AttributeError as e:
         logger.error(f"Failed to extract metadata: {e}")
         raise ValueError(f"Failed to extract metadata: {e}")

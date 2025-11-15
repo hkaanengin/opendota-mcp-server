@@ -59,7 +59,7 @@ def register_match_tools(mcp: FastMCP):
             return {"error": str(e)}
 
     @mcp.tool()
-    async def request_parse_match(match_id: int) -> dict:
+    async def request_parse_match(match_id: int) -> Dict[str, Any]:
         """
         Submit a new parse request for a specific match
         

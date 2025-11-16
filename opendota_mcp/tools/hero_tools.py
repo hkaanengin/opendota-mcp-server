@@ -61,7 +61,7 @@ def register_hero_tools(mcp: FastMCP):
             return {"error": str(e)}
 
     @mcp.tool()
-    async def get_hero_item_popularity(hero_id: Union[int, str]) -> dict:
+    async def get_hero_item_popularity(hero_id: Union[int, str]) -> Dict[str, Any]:
         """
         Get item popularity for a hero categorized by game phase (start, early, mid, late).
         

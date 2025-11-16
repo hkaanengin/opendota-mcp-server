@@ -59,7 +59,7 @@ def register_match_tools(mcp: FastMCP):
             return {"error": str(e)}
 
     @mcp.tool()
-    async def request_parse_match(match_id: int) -> dict:
+    async def request_parse_match(match_id: int) -> Dict[str, Any]:
         """
         Submit a new parse request for a specific match
         
@@ -99,6 +99,11 @@ def register_match_tools(mcp: FastMCP):
         Returns:
             Match information - either full data (unparsed) or summarized sections (parsed)
         """
+        benchmark_fields = [
+            "gold_per_min", "xp_per_min", "kills_per_min", 
+            "last_hits_per_min", "hero_damage_per_min", 
+            "tower_damage", "hero_healing_per_min"
+        ]
         try:
             response = await fetch_api(f"/matches/{match_id}")
 
@@ -143,7 +148,13 @@ def register_match_tools(mcp: FastMCP):
                                 "hero_healing": p.get("hero_healing"),
                                 "last_hits": p.get("last_hits"),
                                 "denies": p.get("denies"),
-                                "benchmarks": p.get("benchmarks", {}),
+                                "benchmarks": {
+                                    field: {
+                                        "raw": p.get("benchmarks", {}).get(field, {}).get("raw"),
+                                        "pct": (p.get("benchmarks", {}).get(field, {}).get("pct"))*100
+                                    }
+                                    for field in benchmark_fields
+                                }
                             }
                             for p in sections.get('players', [])
                         ]
@@ -154,9 +165,41 @@ def register_match_tools(mcp: FastMCP):
             else:
                 # Match is NOT parsed - return full data (it's small enough)
                 logger.info(f"Match {match_id} is not parsed, returning full data")
+                structured_response = {
+                    "players":[
+                        {
+                            "account_id": p.get("account_id"),
+                            "player_name": p.get("personaname"),
+                            "team_name": "Radiant" if p.get("team_number") == 0 else "Dire",
+                            "hero_id": (await get_hero_by_id_logic(p.get("hero_id"))).get("localized_name"),
+                            "kills": p.get("kills"),
+                            "deaths": p.get("deaths"),
+                            "assists": p.get("assists"),
+                            "last_hits": p.get("last_hits"),
+                            "denies": p.get("denies"),
+                            "gold_per_min": p.get("gold_per_min"),
+                            "xp_per_min": p.get("xp_per_min"),
+                            "net_worth": p.get("net_worth"),
+                            "hero_damage": p.get("hero_damage"),
+                            "tower_damage": p.get("tower_damage"),
+                            "hero_healing": p.get("hero_healing"),
+                            "benchmarks": {
+                                field: {
+                                    "raw": p.get("benchmarks", {}).get(field, {}).get("raw"),
+                                    "pct": (p.get("benchmarks", {}).get(field, {}).get("pct"))*100
+                                }
+                                for field in benchmark_fields
+                            },
+                        }
+                        for p in response.get("players")
+                    ],
+                    "radiant_win": response.get("radiant_win"),
+                    "duration": f"{response.get('duration', 0) // 60}:{response.get('duration', 0) % 60:02d}",
+                    "match_id": response.get("match_id"),
+                }
                 return {
                     "parsed": False,
-                    "data": response
+                    "data": structured_response
                 }
 
         except Exception as e:

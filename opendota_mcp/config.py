@@ -68,7 +68,7 @@ VALID_STAT_FIELDS = {
     "kills": "kills",
     "deaths": "deaths", "death": "deaths",
     "assists": "assists", "assist": "assists",
-    "kda": "kills",  # Approximate mapping
+    "kda": "kills",
     
     # Damage and healing
     "hero_damage": "hero_damage", "herodamage": "hero_damage", "damage": "hero_damage",
@@ -93,6 +93,16 @@ VALID_STAT_FIELDS = {
     "comeback": "comeback", "comebacks": "comeback",
     "stomp": "stomp", "stomps": "stomp",
     "loss": "loss", "losses": "loss", "lose": "loss",
+}
+
+ITEM_NAME_CONVERSION = {
+    "bfury": ["battle fury", "battle furry"],
+    "ultimate_scepter": ["aghanims scepter", "aghanim scepter", "aghanim", "agh scepter", "scepter"],
+    "shard": ["agh shard", "aghanim shard", "aghanims shard"],
+    "hand_of_midas": ["midas", "hands of midas"],
+    "guardian_grieves": ["guardians of grieves", "guardian of grieves", "grieves"],
+    "spirit_vessel": ["vessel", "spirits vessel", "sprit vessel"],
+    "skadi": ["eye of skadi", "eyes of skadi", "eyeofskadi", "eyesofskadi"]
 }
 
 def format_rank_tier(rank_tier):

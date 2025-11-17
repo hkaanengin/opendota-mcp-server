@@ -4,7 +4,7 @@ Internal resolver functions for converting natural language to IDs
 from typing import Optional, Union, List, Dict, Any
 import logging
 from .utils import get_account_id
-from .config import VALID_STAT_FIELDS, REFERENCE_DATA, LANE_MAPPING, LANE_DESCRIPTIONS
+from .config import VALID_STAT_FIELDS, REFERENCE_DATA, LANE_MAPPING, LANE_DESCRIPTIONS, ITEM_NAME_CONVERSION
 from .client import fetch_api
 from difflib import SequenceMatcher
 
@@ -463,3 +463,29 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(f"Failed to extract metadata: {e}")
 
     return sections
+
+def convert_item_name(item_name: str) -> str:
+    """
+    Convert item name to lowercase with underscores, with fuzzy matching for special cases.
+    
+    Args:
+        item_name: String input to convert
+        
+    Returns:
+        Converted string in lowercase with underscores between words
+    """
+    if item_name is None:
+        return None
+    
+    lower_name = item_name.lower().replace("'", "")
+    
+    # Check special cases by looking for keywords
+    for output_value, keywords in ITEM_NAME_CONVERSION.items():
+        for keyword in keywords:
+            if keyword in lower_name:
+                return output_value
+    
+    # Normal case: replace spaces with underscores
+    result = lower_name.replace(" ", "_")
+    
+    return result

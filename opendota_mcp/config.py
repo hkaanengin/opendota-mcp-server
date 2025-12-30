@@ -91,7 +91,15 @@ ITEM_NAME_CONVERSION = {
     "hand_of_midas": ["midas", "hands of midas"],
     "guardian_grieves": ["guardians of grieves", "guardian of grieves", "grieves"],
     "spirit_vessel": ["vessel", "spirits vessel", "sprit vessel"],
-    "skadi": ["eye of skadi", "eyes of skadi", "eyeofskadi", "eyesofskadi"]
+    "skadi": ["eye of skadi", "eyes of skadi", "eyeofskadi", "eyesofskadi"],
+    "black_king_bar": ["bkb", "black king"],
+    "monkey_king_bar": ["mkb", "monkey king"],
+    "diffusal_blade": ["diffusal"],
+    "octarine_core": ["octarine"],
+    "travel_boots": ["bot", "bots", "travels", "boots of travel"],
+    "power_treads": ["treads", "pt"],
+    "phase_boots": ["phase"],
+    "tranquil_boots": ["tranquils"]
 }
 
 def format_rank_tier(rank_tier):

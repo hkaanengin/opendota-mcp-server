@@ -89,7 +89,7 @@ async def resolve_lane(lane: Optional[Union[int, str]]) -> Optional[int]:
     logger.debug(f"Resolving lane name: '{lane}'")
     
     # It's a string, look it up
-    result = await convert_lane_name_to_id_logic(lane)
+    result = convert_lane_name_to_id_logic(lane)
     if "error" in result:
         valid_options = result.get("valid_options", [])
         raise ValueError(f"Lane '{lane}' not recognized. Valid options: {', '.join(valid_options)}")
@@ -325,12 +325,12 @@ async def get_hero_by_id_logic(hero_id: int) -> Dict[str, Any]:
         heroes = await fetch_api("/heroes")
         for hero in heroes:
             if hero['id'] == hero_id:
-                return hero
+                return hero["localized_name"]
         return {
             "error": f"Hero with ID {hero_id} not found"
         }
     
-async def convert_lane_name_to_id_logic(lane_name: str) -> Dict[str, Any]:
+def convert_lane_name_to_id_logic(lane_name: str) -> Dict[str, Any]:
     """
     Convert lane/position names to lane_role IDs.
     Use this when you need to convert natural language lanes to IDs.
@@ -390,7 +390,7 @@ async def resolve_item_name(item_id) -> str:
 
 def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Extract match sections as a dictionary (no file I/O).
+    Extract match sections as a dictionary.
 
     Use this in MCP tools to split large match data into manageable sections.
 
@@ -489,3 +489,108 @@ def convert_item_name(item_name: str) -> str:
     result = lower_name.replace(" ", "_")
     
     return result
+
+def get_lane_role_by_id_logic(lane_role: int) -> Dict[str, Any]:
+    """
+    Get lane description by lane_role ID.
+    
+    Args:
+        lane_role: Lane role ID (1-4)
+    
+    Returns:
+        Dictionary with lane_role ID and description
+    
+    Raises:
+        ValueError: If lane_role is not between 1-4
+    
+    Examples:
+        - get_lane_role_by_id_logic(1) returns "Safe Lane (Carry-Position 1/Hard Support-Position 5)"
+        - get_lane_role_by_id_logic(2) returns "Mid Lane (Position 2)"
+        - get_lane_role_by_id_logic(3) returns "Off Lane (Offlane-Position 3/Soft Support-Position 4)"
+        - get_lane_role_by_id_logic(4) returns "Jungle/Roaming (Position 4)"
+    """
+    if not isinstance(lane_role, int):
+        raise ValueError(f"lane_role must be an integer, got {type(lane_role).__name__}")
+    
+    if lane_role not in LANE_DESCRIPTIONS:
+        raise ValueError(
+            f"Invalid lane_role: {lane_role}. Valid values are 1-4"
+        )
+    
+    logger.info(f"Retrieved lane description for ID {lane_role}: {LANE_DESCRIPTIONS[lane_role]}")
+
+    return {
+        "lane_role": lane_role,
+        "lane_role_name": LANE_DESCRIPTIONS[lane_role]
+    }
+
+async def process_player_items(player: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process player item data into a structured format.
+
+    Extracts:
+    - Final build (6 main items)
+    - Neutral item
+    - Key item timings (items > 2000 gold cost)
+
+    Args:
+        player: Player object from match response
+
+    Returns:
+        Dictionary with:
+        - final_build: List of item names (6 items, null if empty slot)
+        - neutral: Neutral item name or null
+        - key_timings: List of {item, time, time_formatted} for major items
+    """
+    def format_time(seconds: int) -> str:
+        """Format seconds to MM:SS"""
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}:{secs:02d}"
+
+    def get_item_cost(item_name: str) -> int:
+        """Get item cost from items.json"""
+        if REFERENCE_DATA.get('items') and item_name in REFERENCE_DATA['items']:
+            return REFERENCE_DATA['items'][item_name].get('cost', 0)
+        return 0
+
+    # Extract final build (item_0 through item_5)
+    final_build = []
+    for i in range(6):
+        item_id = player.get(f"item_{i}", 0)
+        if item_id and item_id != 0:
+            item_name = await resolve_item_name(item_id)
+            final_build.append(item_name)
+        else:
+            final_build.append(None)
+
+    # Extract neutral item
+    neutral_item_id = player.get("item_neutral", 0)
+    neutral_item = None
+    if neutral_item_id and neutral_item_id != 0:
+        neutral_item = await resolve_item_name(neutral_item_id)
+
+    # Extract key item timings (items with cost >= 2000 gold)
+    key_timings = []
+    purchase_log = player.get("purchase_log", [])
+
+    for purchase in purchase_log:
+        item_name = purchase.get("key")
+        time = purchase.get("time")
+
+        if item_name and time is not None:
+            cost = get_item_cost(item_name)
+
+            # Only include items >= 2000 gold and positive time (exclude pre-game)
+            if cost >= 2000 and time >= 0:
+                key_timings.append({
+                    "item": item_name,
+                    "time": time,
+                    "time_formatted": format_time(time)
+                })
+
+    return {
+        "final_build": final_build,
+        "neutral": neutral_item,
+        "key_timings": key_timings
+    }

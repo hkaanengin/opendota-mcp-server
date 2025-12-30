@@ -31,6 +31,7 @@ PLAYER_CACHE: Dict[str, str] = {
 REFERENCE_DATA: Dict[str, Any] = {
     "heroes": {},
     "item_ids": {},
+    "items": {},
     "hero_lore": {},
     "aghs_desc": {},
 }
@@ -59,7 +60,7 @@ LANE_DESCRIPTIONS = {
     1: "Safe Lane (Carry-Position 1/Hard Support-Position 5)",
     2: "Mid Lane (Position 2)",
     3: "Off Lane (Offlane-Position 3/Soft Support-Position 4)",
-    # 4: "Jungle/Roaming (Position 4)"
+    4: "Jungle/Roaming (Position 4)"
 }
 
 # Valid statistical fields for histograms and records
@@ -68,7 +69,6 @@ VALID_STAT_FIELDS = {
     "kills": "kills",
     "deaths": "deaths", "death": "deaths",
     "assists": "assists", "assist": "assists",
-    "kda": "kills",
     
     # Damage and healing
     "hero_damage": "hero_damage", "herodamage": "hero_damage", "damage": "hero_damage",
@@ -78,21 +78,10 @@ VALID_STAT_FIELDS = {
     "gold_per_min": "gold_per_min", "gpm": "gold_per_min", "goldpermin": "gold_per_min",
     "xp_per_min": "xp_per_min", "xpm": "xp_per_min", "exppermin": "xp_per_min",
     "last_hits": "last_hits", "lasthits": "last_hits", "cs": "last_hits", "creep score": "last_hits",
-    
-    # Performance metrics
-    "lane_efficiency_pct": "lane_efficiency_pct", "laneefficiency": "lane_efficiency_pct", 
-    "lane efficiency": "lane_efficiency_pct",
-    "actions_per_min": "actions_per_min", "apm": "actions_per_min", "actionspermin": "actions_per_min",
-    
-    # Game stats
-    "level": "level", "lvl": "level",
-    "pings": "pings", "ping": "pings",
-    "duration": "duration", "game duration": "duration", "match duration": "duration",
-    
-    # Game outcome types
-    "comeback": "comeback", "comebacks": "comeback",
-    "stomp": "stomp", "stomps": "stomp",
-    "loss": "loss", "losses": "loss", "lose": "loss",
+    "denies": "denies", "denys": "denies", "deny": "denies",
+
+    # Match
+    "duration": "duration", "match duration": "duration", "matchduration": "duration", "match_length": "duration", "matchlength": "duration"
 }
 
 ITEM_NAME_CONVERSION = {

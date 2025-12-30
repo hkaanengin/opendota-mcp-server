@@ -88,8 +88,8 @@ async def load_reference_data():
     constants_dir = os.path.join(current_dir, 'constants')
     
     logger.info(f"Loading reference data from: {constants_dir}")
-    
-    for const in ['heroes', 'item_ids', 'hero_lore', 'aghs_desc']:
+
+    for const in ['heroes', 'item_ids', 'items', 'hero_lore', 'aghs_desc']:
         filepath = os.path.join(constants_dir, f"{const}.json")
         if os.path.exists(filepath):
             REFERENCE_DATA[const] = load_json(filepath)
@@ -97,5 +97,5 @@ async def load_reference_data():
         else:
             logger.warning(f"File not found: {filepath}")
             REFERENCE_DATA[const] = {}
-    
+
     logger.info(f"Reference data loaded: {list(REFERENCE_DATA.keys())}")

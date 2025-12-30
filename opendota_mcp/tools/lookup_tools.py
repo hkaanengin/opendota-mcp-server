@@ -50,7 +50,7 @@ def register_lookup_tools(mcp: FastMCP):
             - "carry", "safe lane", "pos 1" all return lane_role 1
             - "offlane", "offline", "pos 3" all return lane_role 3
         """
-        return await convert_lane_name_to_id_logic(lane_name)
+        return convert_lane_name_to_id_logic(lane_name)
     
     @mcp.tool()
     async def search_heroes(query: str) -> List[Dict[str, Any]]:

@@ -388,6 +388,140 @@ async def resolve_item_name(item_id) -> str:
         logger.info(f"Item with ID {item_id} not found in reference data, returning {item_id}")
         return item_id
 
+async def resolve_item_by_name(item_input: str) -> str:
+    """
+    Resolve item display name or fuzzy name to internal name.
+
+    Args:
+        item_input: Display name (e.g., "Diffusal Blade", "Octarine Core")
+                   or fuzzy input (e.g., "diffusal", "octarine")
+
+    Returns:
+        Internal item name (e.g., "diffusal_blade", "octarine_core")
+
+    Raises:
+        ValueError: If item not found with suggestions
+    """
+    from difflib import SequenceMatcher
+
+    def normalize_name(name: str) -> str:
+        """Remove spaces, hyphens, apostrophes, make lowercase"""
+        return name.lower().replace(" ", "").replace("-", "").replace("'", "")
+
+    def similarity(a: str, b: str) -> float:
+        """Calculate similarity ratio between two strings"""
+        return SequenceMatcher(None, a, b).ratio()
+
+    if not REFERENCE_DATA.get('items'):
+        raise ValueError("Items reference data not loaded")
+
+    items = REFERENCE_DATA['items']
+    input_normalized = normalize_name(item_input)
+
+    # Step 1: Check ITEM_NAME_CONVERSION for known aliases
+    for internal_name, aliases in ITEM_NAME_CONVERSION.items():
+        for alias in aliases:
+            if normalize_name(alias) == input_normalized:
+                logger.info(f"Matched '{item_input}' to '{internal_name}' via alias")
+                return internal_name
+
+    # Step 2: Try exact match on internal name (e.g., "diffusal_blade")
+    if input_normalized in [normalize_name(key) for key in items.keys()]:
+        matched_key = next(key for key in items.keys() if normalize_name(key) == input_normalized)
+        logger.info(f"Exact match: '{item_input}' → '{matched_key}'")
+        return matched_key
+
+    # Step 3: Try exact match on display name (e.g., "Diffusal Blade")
+    for internal_name, item_data in items.items():
+        dname = item_data.get('dname', '')
+        if normalize_name(dname) == input_normalized:
+            logger.info(f"Display name match: '{item_input}' → '{internal_name}'")
+            return internal_name
+
+    # Step 4: Fuzzy match on both internal names and display names
+    matches = []
+    for internal_name, item_data in items.items():
+        dname = item_data.get('dname', '')
+
+        # Score against internal name
+        internal_sim = similarity(input_normalized, normalize_name(internal_name))
+        # Score against display name
+        display_sim = similarity(input_normalized, normalize_name(dname))
+
+        best_sim = max(internal_sim, display_sim)
+
+        if best_sim >= 0.70:  # Fuzzy threshold (0.70 = allows 1-2 char typos)
+            matches.append({
+                'internal_name': internal_name,
+                'display_name': dname,
+                'similarity': best_sim
+            })
+
+    if matches:
+        # Sort by similarity, highest first
+        matches.sort(key=lambda x: x['similarity'], reverse=True)
+        best_match = matches[0]
+
+        logger.info(f"Fuzzy match: '{item_input}' → '{best_match['internal_name']}' (similarity: {best_match['similarity']:.2f})")
+        return best_match['internal_name']
+
+    # Step 5: No match found - provide suggestions
+    suggestions = [item_data.get('dname', key) for key, item_data in list(items.items())[:5]]
+    raise ValueError(f"Item '{item_input}' not found. Example items: {', '.join(suggestions)}")
+
+async def get_item_details_logic(item_internal_name: str) -> Dict[str, Any]:
+    """
+    Get item details from items.json using internal name.
+
+    Args:
+        item_internal_name: Internal item name (e.g., "diffusal_blade")
+
+    Returns:
+        Complete item data dictionary
+    """
+    if not REFERENCE_DATA.get('items'):
+        return {"error": "Items reference data not loaded"}
+
+    if item_internal_name in REFERENCE_DATA['items']:
+        item_details = REFERENCE_DATA['items'][item_internal_name]
+        logger.info(f"Found item '{item_internal_name}' in reference data")
+        return item_details
+    else:
+        logger.error(f"Item '{item_internal_name}' not found in items.json")
+        return {"error": f"Item '{item_internal_name}' not found"}
+
+def get_aghs_details_logic(hero_id: int) -> Dict[str, Any]:
+    """
+    Get Aghanim's Scepter and Shard details for a hero from aghs_desc.json.
+
+    Args:
+        hero_id: Hero ID (e.g., 1 for Anti-Mage)
+
+    Returns:
+        Dictionary with scepter and shard information:
+        - hero_id: Hero ID
+        - hero_name: Internal hero name
+        - has_scepter: Whether hero has scepter upgrade
+        - scepter_desc: Scepter description (if has_scepter)
+        - scepter_skill_name: Affected skill name (if has_scepter)
+        - scepter_new_skill: Whether scepter adds new skill (if has_scepter)
+        - has_shard: Whether hero has shard upgrade
+        - shard_desc: Shard description (if has_shard)
+        - shard_skill_name: Affected skill name (if has_shard)
+        - shard_new_skill: Whether shard adds new skill (if has_shard)
+    """
+    if not REFERENCE_DATA.get('aghs_desc'):
+        return {"error": "Aghanim's descriptions not loaded"}
+
+    # aghs_desc is an array, find the hero by hero_id
+    for hero_aghs in REFERENCE_DATA['aghs_desc']:
+        if hero_aghs.get('hero_id') == hero_id:
+            logger.info(f"Found Aghanim's details for hero ID {hero_id}")
+            return hero_aghs
+
+    logger.error(f"No Aghanim's details found for hero ID {hero_id}")
+    return {"error": f"No Aghanim's details found for hero ID {hero_id}"}
+
 def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract match sections as a dictionary.

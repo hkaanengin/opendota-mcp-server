@@ -5,7 +5,7 @@ from typing import Optional, Union, List, Dict, Any
 import logging
 from fastmcp import FastMCP
 from ..client import fetch_api
-from ..resolvers import convert_item_name, resolve_hero, resolve_lane, resolve_stat_field, get_hero_by_id_logic, get_lane_role_by_id_logic
+from ..resolvers import resolve_item_to_internal_name, resolve_hero, resolve_lane, resolve_stat_field, get_hero_by_id_logic, get_lane_role_by_id_logic
 from datetime import datetime
 
 logger = logging.getLogger("opendota-server")
@@ -313,8 +313,8 @@ def register_misc_tools(mcp: FastMCP):
                 for element in response:
                     time_key = f"{int(element['time']) // 60}:{int(element['time']) % 60:02d}"
 
-                    
                     lane_data = {
+                        "time": time_key,
                         "games": element["games"],
                         "wins": element["wins"],
                         "win_rate": f"{int(element['wins'])/int(element['games'])*100:.1f}" if int(element['games']) > 0 else "0.0"
@@ -426,7 +426,7 @@ def register_misc_tools(mcp: FastMCP):
             return {"error": "Missing required parameters. Please either give a hero name or an item name"}
 
         try:
-            resolved_item_name = convert_item_name(item_name)
+            resolved_item_name = await resolve_item_to_internal_name(item_name)
             logger.info(f"Resolved item name: {resolved_item_name}")
             hero_id = await resolve_hero(hero_name)
             logger.info(f"Resolved hero name: {hero_id}")
@@ -452,7 +452,7 @@ def register_misc_tools(mcp: FastMCP):
 
                 return result
             elif hero_name and item_name is None: #If hero_id is provided, organize response by item_name
-                processed_hero_name = (await get_hero_by_id_logic(hero_id)).get("localized_name") #check this if works.
+                processed_hero_name = (await get_hero_by_id_logic(hero_id)).get("localized_name")
                 result["hero_name"] = processed_hero_name
 
                 for element in response:
@@ -472,7 +472,7 @@ def register_misc_tools(mcp: FastMCP):
 
                 return result
             elif hero_name and item_name: #If hero_id and item_name are provided, organize response by time
-                processed_hero_name = (await get_hero_by_id_logic(hero_id)).get("localized_name") #check this if works.
+                processed_hero_name = (await get_hero_by_id_logic(hero_id)).get("localized_name")
                 result["hero_name"] = processed_hero_name
                 result["item_name"] = resolved_item_name
 

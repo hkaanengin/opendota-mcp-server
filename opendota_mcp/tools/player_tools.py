@@ -74,10 +74,10 @@ def register_player_tools(mcp: FastMCP):
             
             logger.info(f"Fetching win/loss stats for account_id: {account_id}")
             wl_data = await fetch_api(f"/players/{account_id}/wl")
-            
+
             player.win_count = wl_data.get('win')
             player.lose_count = wl_data.get('lose')
-            player.calculate_win_rate()
+            # win_rate is automatically calculated as a property
             
             logger.info(f"Fetching favorite heroes for account_id: {account_id}")
             heroes_data = await fetch_api(f"/players/{account_id}/heroes")
@@ -92,7 +92,7 @@ def register_player_tools(mcp: FastMCP):
                         hero_name = hero_info["localized_name"]
                         games_played = hero.get('games')
                         win_count = hero.get("win")
-                        win_rate = round((win_count / games_played) * 100, 2)
+                        win_rate = round((win_count / games_played) * 100, 2) if games_played and games_played > 0 else 0.0
                         player.fav_heroes.append({
                             "hero_name": hero_name,
                             "games_played": games_played,
@@ -200,7 +200,7 @@ def register_player_tools(mcp: FastMCP):
             
             wl_data = await fetch_api(f"/players/{account_id}/wl", params)
             total_games = int(wl_data['win']) + int(wl_data['lose'])
-            wl_data["win_rate"] = f"{int(wl_data['win'])/(total_games)*100:.1f}" if total_games > 0 else "0.0"
+            wl_data["win_rate"] = f"{int(wl_data['win'])/(total_games)*100:.2f}" if total_games > 0 else "0.0"
             return wl_data
             
         except ValueError as e:
@@ -311,7 +311,7 @@ def register_player_tools(mcp: FastMCP):
                     "last_played": datetime.fromtimestamp(element.get("last_played")).strftime("%B %d, %Y"),
                     "wins": element["win"],
                     "games_played": element["games"],
-                    "win_rate": f"{int(element['win'])/int(element['games'])*100:.1f}" if element['games'] > 0 else "0.0"
+                    "win_rate": f"{int(element['win'])/int(element['games'])*100:.2f}" if element['games'] > 0 else "0.0"
                 })
 
             return structured_result
@@ -425,9 +425,9 @@ def register_player_tools(mcp: FastMCP):
                     "last_played": datetime.fromtimestamp(peer.get("last_played")).strftime("%B %d, %Y"),
                     "wins": peer["win"],
                     "games_played": peer["games"],
-                    "win_rate": f"{int(peer['win'])/int(peer['games'])*100:.1f}" if peer['games'] > 0 else "0.0",
-                    "average_gpm": f"{int(peer.get('with_gpm_sum', 0))/int(peer['with_games'])*100:.1f}" if peer['games'] > 0 else "0.0",
-                    "average_xpm": f"{int(peer.get('with_xpm_sum', 0))/int(peer['with_games'])*100:.1f}" if peer['games'] > 0 else "0.0",
+                    "win_rate": f"{int(peer['win'])/int(peer['games'])*100:.2f}" if peer['games'] > 0 else "0.0",
+                    "average_gpm": f"{int(peer.get('with_gpm_sum', 0))/int(peer['with_games']):.2f}" if peer['games'] > 0 else "0.0",
+                    "average_xpm": f"{int(peer.get('with_xpm_sum', 0))/int(peer['with_games']):.2f}" if peer['games'] > 0 else "0.0",
                 })
             
             return structured_result
@@ -541,7 +541,7 @@ def register_player_tools(mcp: FastMCP):
                     "field": element["field"],
                     "games_played": element["n"],
                     "count": element["sum"],
-                    "average": f"{int(element.get('sum', 0))/int(element['n'])*100:.1f}" if element['n'] > 0 else "0.0"
+                    "average": f"{int(element.get('sum', 0))/int(element['n']):.2f}" if element['n'] > 0 else "0.0"
                 })
             
             return structured_result
@@ -611,7 +611,7 @@ def register_player_tools(mcp: FastMCP):
             - count (int): The value or range (e.g., 10 for "10 kills")
             - games_played (int): Number of games with this value
             - win (int): Games won at this performance level
-            - win_rate (float): Win rate at this value (0.0 to 1.0)
+            - win_rate (str): Win rate at this value (0.0 to 1.0)
             
         The buckets are typically in ranges (e.g., 0-1, 1-2, 2-3 kills) or exact values
         depending on the field. Higher performance levels often correlate with higher win rates.
@@ -664,14 +664,14 @@ def register_player_tools(mcp: FastMCP):
             }
             
             result = await fetch_api(f"/players/{account_id}/histograms/{field}", params)
-            
+
             structured_result = []
             for element in result:
                 structured_result.append({
                     "count": element["x"],
                     "games_played": element["games"],
                     "win": element["win"],
-                    "average": f"{int(element.get('win', 0))/int(element['games'])*100:.1f}" if element['games'] > 0 else "0.0"
+                    "win_rate": f"{int(element.get('win', 0))/int(element['games'])*100:.2f}" if element['games'] > 0 else "0.0"
                 })
             
             return structured_result

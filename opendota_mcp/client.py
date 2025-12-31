@@ -23,7 +23,7 @@ async def get_http_client() -> httpx.AsyncClient:
         # Add API key to Authorization header if available
         if OPENDOTA_API_KEY:
             headers["Authorization"] = f"Bearer {OPENDOTA_API_KEY}"
-            logger.info(f"Using API key: {OPENDOTA_API_KEY[:4]}...")
+            logger.info(f"Using API key: {OPENDOTA_API_KEY[:3]}...")
         else:
             logger.info("HTTP client initialized (anonymous access)")
 

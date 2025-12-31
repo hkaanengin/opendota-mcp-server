@@ -53,8 +53,8 @@ def load_json(filepath: str) -> Dict[str, Any]:
         with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, IOError) as e:
-      logger.error(f"Error loading {filepath}: {e}")
-      return {}
+        logger.error(f"Error loading {filepath}: {e}")
+        return {}
 
 
 def load_reference_data():

@@ -41,7 +41,7 @@ LANE_MAPPING = {
     # Safe Lane / Carry / Position 1
     "safe lane": 1, "safelane": 1, "safe": 1, "carry": 1,
     "pos 1": 1, "position 1": 1, "pos1": 1, "1": 1,
-    "hard support": 1, "hardsupport": 1, "hard sup": 1, "hardsup":1 , 
+    "hard support": 1, "hardsupport": 1, "hard sup": 1, "hardsup": 1, 
     "pos 5": 1, "position 5": 1, "pos5": 1, "5": 1, 
     # Mid Lane / Position 2
     "mid": 2, "midlane": 2, "mid lane": 2, "middle": 2,
@@ -49,8 +49,8 @@ LANE_MAPPING = {
     # Off Lane / Offlane / Position 3
     "off lane": 3, "offlane": 3, "off": 3, "hard lane": 3, "hardlane": 3,
     "pos 3": 3, "position 3": 3, "pos3": 3, "3": 3,
-    "sot support": 1, "softsupport": 1, "soft sup": 1, "softsup":1 , 
-    "pos 4": 1, "position 4": 1, "pos4": 1, "4": 1, 
+    "soft support": 3, "softsupport": 3, "soft sup": 3, "softsup": 3, 
+    "pos 4": 3, "position 4": 3, "pos4": 3, "4": 3, 
     # Jungle / Position 4
     # "jungle": 4, "jungler": 4, "roaming": 4, "roam": 4,
     # "pos 4": 4, "position 4": 4, "pos4": 4, "4": 4,
@@ -86,8 +86,8 @@ VALID_STAT_FIELDS = {
 
 ITEM_NAME_CONVERSION = {
     "bfury": ["battle fury", "battle furry"],
-    "ultimate_scepter": ["aghanims scepter", "aghanim scepter", "aghanim", "agh scepter", "scepter"],
-    "shard": ["agh shard", "aghanim shard", "aghanims shard"],
+    "ultimate_scepter": ["aghanims scepter", "aghanim scepter", "aghanim", "agh scepter", "scepter", "aghs"],
+    "shard": ["agh shard", "aghanim shard", "aghanims shard", "shard"],
     "hand_of_midas": ["midas", "hands of midas"],
     "guardian_grieves": ["guardians of grieves", "guardian of grieves", "grieves"],
     "spirit_vessel": ["vessel", "spirits vessel", "sprit vessel"],

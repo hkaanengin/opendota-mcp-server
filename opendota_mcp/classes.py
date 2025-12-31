@@ -1,7 +1,7 @@
 from dataclasses import dataclass, asdict
 from typing import Optional, List, Dict, Any
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import time
 from collections import defaultdict
@@ -10,25 +10,29 @@ logger = logging.getLogger("opendota-server")
 
 @dataclass
 class Player:
-    account_id : int
+    account_id: int
     personaname: Optional[str] = None
     avatarfull: Optional[str] = None
     profileurl: Optional[str] = None
     win_count: Optional[int] = None
     lose_count: Optional[int] = None
-    win_rate: Optional[float] = None
     fav_heroes: Optional[List[Dict[str, Any]]] = None
-    
-    def calculate_win_rate(self):
+
+    @property
+    def win_rate(self) -> Optional[float]:
         """Calculate win rate from win and lose counts"""
         if self.win_count is not None and self.lose_count is not None:
             total = self.win_count + self.lose_count
             if total > 0:
-                self.win_rate = round((self.win_count / total) * 100, 2)
-    
+                return round((self.win_count / total) * 100, 2)
+        return None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert Player to dictionary, removing None values"""
-        return {k: v for k, v in asdict(self).items() if v is not None}
+        data = asdict(self)
+        # Add computed win_rate property
+        data['win_rate'] = self.win_rate
+        return {k: v for k, v in data.items() if v is not None}
 
 # Rate limiter configuration
 class RateLimiter:
@@ -68,7 +72,7 @@ class RateLimiter:
             # Add current request
             self.requests.append(now)
 
-#Server Metrics for server.py
+# Server Metrics for server.py
 class ServerMetrics:
     """Simple in-memory metrics for debugging"""
     def __init__(self):
@@ -82,7 +86,7 @@ class ServerMetrics:
     def record_request(self, method: str, path: str):
         self.request_count += 1
         self.last_requests.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "method": method,
             "path": path
         })
@@ -95,20 +99,22 @@ class ServerMetrics:
     
     def record_error(self, error: str, context: str = None):
         self.errors.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(error),
             "context": context
         })
         # Keep only last 100 errors
         if len(self.errors) > 100:
             self.errors.pop(0)
-    
-    def get_uptime(self):
+
+    @property
+    def uptime(self) -> float:
+        """Get server uptime in seconds"""
         return time.time() - self.start_time
-    
+
     def to_dict(self):
         return {
-            "uptime_seconds": round(self.get_uptime(), 2),
+            "uptime_seconds": round(self.uptime, 2),
             "total_requests": self.request_count,
             "tool_calls": dict(self.tool_calls),
             "recent_errors": self.errors[-10:],  # Last 10 errors

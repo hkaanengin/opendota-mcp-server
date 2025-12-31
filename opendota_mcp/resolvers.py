@@ -6,9 +6,26 @@ import logging
 from .utils import get_account_id
 from .config import VALID_STAT_FIELDS, REFERENCE_DATA, LANE_MAPPING, LANE_DESCRIPTIONS, ITEM_NAME_CONVERSION
 from .client import fetch_api
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher, get_close_matches
 
 logger = logging.getLogger("opendota-server")
+
+# Fuzzy matching thresholds
+SIMILARITY_THRESHOLD_HIGH = 0.9  # High confidence match
+SIMILARITY_THRESHOLD_MEDIUM = 0.8  # Good match
+SIMILARITY_THRESHOLD_FUZZY = 0.7  # Fuzzy match (allows 1-2 char typos)
+SIMILARITY_THRESHOLD_STAT_FIELD = 0.6  # Stat field matching
+SIMILARITY_THRESHOLD_SUGGESTION = 0.5  # For showing suggestions
+
+
+def _normalize_name(name: str) -> str:
+    """Remove spaces, hyphens, apostrophes, make lowercase"""
+    return name.lower().replace(" ", "").replace("-", "").replace("'", "")
+
+
+def _similarity(a: str, b: str) -> float:
+    """Calculate similarity ratio between two strings"""
+    return SequenceMatcher(None, a, b).ratio()
 
 async def resolve_hero(hero: Optional[Union[int, str]]) -> Optional[int]:
     """
@@ -175,11 +192,9 @@ def resolve_stat_field(field: str) -> str:
         return result
     
     # Fuzzy matching: check if field is similar to any valid field
-    from difflib import get_close_matches
-    
     all_field_variants = list(VALID_STAT_FIELDS.keys())
-    close_matches = get_close_matches(field_normalized, all_field_variants, n=3, cutoff=0.6)
-    
+    close_matches = get_close_matches(field_normalized, all_field_variants, n=3, cutoff=SIMILARITY_THRESHOLD_STAT_FIELD)
+
     if close_matches:
         best_match = close_matches[0]
         canonical_field = VALID_STAT_FIELDS[best_match]
@@ -198,26 +213,18 @@ async def get_hero_id_by_name_logic(hero_name: str) -> Dict[str, Any]:
     """
     Find a hero's ID by name with fuzzy matching for typos and case variations.
     Use this when you need to convert hero names to IDs.
-    
+
     Args:
         hero_name: The hero name (handles typos, case variations, spaces)
-    
+
     Returns:
         Dictionary with hero_id and hero name, or suggestions if not found
-    
+
     Examples:
         - "Rubick", "rubick", "RUBICK", "rubik" all return Rubick's ID
         - "Anti-Mage", "anti mage", "antimage" all work
         - "rbick" returns Rubick with fuzzy matching
     """
-    def normalize_name(name: str) -> str:
-        """Remove spaces, hyphens, apostrophes, make lowercase"""
-        return name.lower().replace(" ", "").replace("-", "").replace("'", "")
-    
-    def similarity(a: str, b: str) -> float:
-        """Calculate similarity ratio between two strings"""
-        return SequenceMatcher(None, a, b).ratio()
-    
     # Use local reference data if available, otherwise fetch from API
     if REFERENCE_DATA.get('heroes'):
         # Convert dict to list format
@@ -227,37 +234,37 @@ async def get_hero_id_by_name_logic(hero_name: str) -> Dict[str, Any]:
         # Fallback to API
         heroes = await fetch_api("/heroes")
         logger.info("Using API data (reference data not loaded)")
-    
-    hero_name_normalized = normalize_name(hero_name)
-    
+
+    hero_name_normalized = _normalize_name(hero_name)
+
     # Step 1: Try exact match (normalized)
     for hero in heroes:
-        hero_normalized = normalize_name(hero['localized_name'])
+        hero_normalized = _normalize_name(hero['localized_name'])
         if hero_normalized == hero_name_normalized:
             return {
                 "hero_id": hero['id'],
                 "localized_name": hero['localized_name'],
                 "match_type": "exact"
             }
-    
+
     # Step 2: Try fuzzy match (typos, close matches)
     matches = []
     for hero in heroes:
-        hero_normalized = normalize_name(hero['localized_name'])
-        sim = similarity(hero_name_normalized, hero_normalized)
-        
-        if sim >= 0.8:
+        hero_normalized = _normalize_name(hero['localized_name'])
+        sim = _similarity(hero_name_normalized, hero_normalized)
+
+        if sim >= SIMILARITY_THRESHOLD_MEDIUM:
             matches.append({
                 "hero_id": hero['id'],
                 "localized_name": hero['localized_name'],
                 "similarity": sim
             })
-    
+
     matches.sort(key=lambda x: x['similarity'], reverse=True)
-    
+
     if matches:
         best_match = matches[0]
-        if best_match['similarity'] >= 0.9:
+        if best_match['similarity'] >= SIMILARITY_THRESHOLD_HIGH:
             return {
                 "hero_id": best_match['hero_id'],
                 "localized_name": best_match['localized_name'],
@@ -272,20 +279,20 @@ async def get_hero_id_by_name_logic(hero_name: str) -> Dict[str, Any]:
                 "confidence": "medium",
                 "alternatives": [m['localized_name'] for m in matches[:3]]
             }
-    
+
     # Step 3: No good matches, suggest similar heroes
     suggestions = []
     for hero in heroes:
-        hero_normalized = normalize_name(hero['localized_name'])
-        sim = similarity(hero_name_normalized, hero_normalized)
-        if sim >= 0.5:
+        hero_normalized = _normalize_name(hero['localized_name'])
+        sim = _similarity(hero_name_normalized, hero_normalized)
+        if sim >= SIMILARITY_THRESHOLD_SUGGESTION:
             suggestions.append({
                 "name": hero['localized_name'],
                 "similarity": sim
             })
-    
+
     suggestions.sort(key=lambda x: x['similarity'], reverse=True)
-    
+
     return {
         "error": f"Hero '{hero_name}' not found",
         "suggestions": [s['name'] for s in suggestions[:5]]
@@ -325,7 +332,8 @@ async def get_hero_by_id_logic(hero_id: int) -> Dict[str, Any]:
         heroes = await fetch_api("/heroes")
         for hero in heroes:
             if hero['id'] == hero_id:
-                return hero["localized_name"]
+                logger.info(f"Found hero {hero_id} ({hero.get('localized_name')}) via API")
+                return hero
         return {
             "error": f"Hero with ID {hero_id} not found"
         }
@@ -360,7 +368,7 @@ def convert_lane_name_to_id_logic(lane_name: str) -> Dict[str, Any]:
         "valid_options": ["mid", "safe lane", "offlane", "jungle", "pos 1-4"]
     }
 
-async def resolve_item_name(item_id) -> str:
+async def get_item_display_name_by_id(item_id: Union[int, str]) -> str:
     def format_item_name(internal_name: str) -> str:
         """Convert internal_name to display format with lowercase articles."""
         words = internal_name.replace("_", " ").split()
@@ -388,7 +396,7 @@ async def resolve_item_name(item_id) -> str:
         logger.info(f"Item with ID {item_id} not found in reference data, returning {item_id}")
         return item_id
 
-async def resolve_item_by_name(item_input: str) -> str:
+async def resolve_item_to_internal_name(item_input: str) -> str:
     """
     Resolve item display name or fuzzy name to internal name.
 
@@ -402,39 +410,32 @@ async def resolve_item_by_name(item_input: str) -> str:
     Raises:
         ValueError: If item not found with suggestions
     """
-    from difflib import SequenceMatcher
-
-    def normalize_name(name: str) -> str:
-        """Remove spaces, hyphens, apostrophes, make lowercase"""
-        return name.lower().replace(" ", "").replace("-", "").replace("'", "")
-
-    def similarity(a: str, b: str) -> float:
-        """Calculate similarity ratio between two strings"""
-        return SequenceMatcher(None, a, b).ratio()
+    if item_input is None:
+        return None
 
     if not REFERENCE_DATA.get('items'):
         raise ValueError("Items reference data not loaded")
 
     items = REFERENCE_DATA['items']
-    input_normalized = normalize_name(item_input)
+    input_normalized = _normalize_name(item_input)
 
     # Step 1: Check ITEM_NAME_CONVERSION for known aliases
     for internal_name, aliases in ITEM_NAME_CONVERSION.items():
         for alias in aliases:
-            if normalize_name(alias) == input_normalized:
+            if _normalize_name(alias) == input_normalized:
                 logger.info(f"Matched '{item_input}' to '{internal_name}' via alias")
                 return internal_name
 
     # Step 2: Try exact match on internal name (e.g., "diffusal_blade")
-    if input_normalized in [normalize_name(key) for key in items.keys()]:
-        matched_key = next(key for key in items.keys() if normalize_name(key) == input_normalized)
-        logger.info(f"Exact match: '{item_input}' → '{matched_key}'")
-        return matched_key
+    for key in items.keys():
+        if _normalize_name(key) == input_normalized:
+            logger.info(f"Exact match: '{item_input}' → '{key}'")
+            return key
 
     # Step 3: Try exact match on display name (e.g., "Diffusal Blade")
     for internal_name, item_data in items.items():
         dname = item_data.get('dname', '')
-        if normalize_name(dname) == input_normalized:
+        if _normalize_name(dname) == input_normalized:
             logger.info(f"Display name match: '{item_input}' → '{internal_name}'")
             return internal_name
 
@@ -444,13 +445,13 @@ async def resolve_item_by_name(item_input: str) -> str:
         dname = item_data.get('dname', '')
 
         # Score against internal name
-        internal_sim = similarity(input_normalized, normalize_name(internal_name))
+        internal_sim = _similarity(input_normalized, _normalize_name(internal_name))
         # Score against display name
-        display_sim = similarity(input_normalized, normalize_name(dname))
+        display_sim = _similarity(input_normalized, _normalize_name(dname))
 
         best_sim = max(internal_sim, display_sim)
 
-        if best_sim >= 0.70:  # Fuzzy threshold (0.70 = allows 1-2 char typos)
+        if best_sim >= SIMILARITY_THRESHOLD_FUZZY:
             matches.append({
                 'internal_name': internal_name,
                 'display_name': dname,
@@ -598,32 +599,6 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
 
     return sections
 
-def convert_item_name(item_name: str) -> str:
-    """
-    Convert item name to lowercase with underscores, with fuzzy matching for special cases.
-    
-    Args:
-        item_name: String input to convert
-        
-    Returns:
-        Converted string in lowercase with underscores between words
-    """
-    if item_name is None:
-        return None
-    
-    lower_name = item_name.lower().replace("'", "")
-    
-    # Check special cases by looking for keywords
-    for output_value, keywords in ITEM_NAME_CONVERSION.items():
-        for keyword in keywords:
-            if keyword in lower_name:
-                return output_value
-    
-    # Normal case: replace spaces with underscores
-    result = lower_name.replace(" ", "_")
-    
-    return result
-
 def get_lane_role_by_id_logic(lane_role: int) -> Dict[str, Any]:
     """
     Get lane description by lane_role ID.
@@ -692,17 +667,21 @@ async def process_player_items(player: Dict[str, Any]) -> Dict[str, Any]:
     final_build = []
     for i in range(6):
         item_id = player.get(f"item_{i}", 0)
-        if item_id and item_id != 0:
-            item_name = await resolve_item_name(item_id)
-            final_build.append(item_name)
-        else:
+        try:
+            if item_id and item_id != 0:
+                item_name = await get_item_display_name_by_id(item_id)
+                final_build.append(item_name)
+            else:
+                final_build.append(None)
+        except Exception as e:
+            logger.error(f"Failed to resolve item {item_id}: {e}")
             final_build.append(None)
 
     # Extract neutral item
     neutral_item_id = player.get("item_neutral", 0)
     neutral_item = None
     if neutral_item_id and neutral_item_id != 0:
-        neutral_item = await resolve_item_name(neutral_item_id)
+        neutral_item = await get_item_display_name_by_id(neutral_item_id)
 
     # Extract key item timings (items with cost >= 2000 gold)
     key_timings = []
@@ -728,3 +707,53 @@ async def process_player_items(player: Dict[str, Any]) -> Dict[str, Any]:
         "neutral": neutral_item,
         "key_timings": key_timings
     }
+
+async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: List[str]) -> List[Dict[str, Any]]:
+    """
+    Build structured player list with item data and benchmarks for match details.
+
+    Args:
+        players: List of player dictionaries from match data
+        benchmark_fields: List of benchmark field names to include
+
+    Returns:
+        List of structured player dictionaries with:
+        - Basic info (account_id, hero_name, team, etc.)
+        - Performance stats (kills, deaths, assists, GPM, XPM, etc.)
+        - Item data (final build, neutral item, key timings)
+        - Benchmarks (percentiles for specified fields)
+    """
+    result = []
+    for p in players:
+        # Process item data
+        items_data = await process_player_items(p)
+
+        player_dict = {
+            "account_id": p.get("account_id"),
+            "player_slot": p.get("player_slot"),
+            "hero_id": p.get("hero_id"),
+            "hero_name": (await get_hero_by_id_logic(p.get("hero_id"))).get("localized_name"),
+            "personaname": p.get("personaname"),
+            "team": "radiant" if p.get("player_slot", 0) < 128 else "dire",
+            "kills": p.get("kills"),
+            "deaths": p.get("deaths"),
+            "assists": p.get("assists"),
+            "gold_per_min": p.get("gold_per_min"),
+            "xp_per_min": p.get("xp_per_min"),
+            "net_worth": p.get("net_worth"),
+            "hero_damage": p.get("hero_damage"),
+            "tower_damage": p.get("tower_damage"),
+            "hero_healing": p.get("hero_healing"),
+            "last_hits": p.get("last_hits"),
+            "denies": p.get("denies"),
+            "items": items_data,
+            "benchmarks": {
+                field: {
+                    "raw": p.get("benchmarks", {}).get(field, {}).get("raw"),
+                    "pct": (p.get("benchmarks", {}).get(field, {}).get("pct") or 0) * 100
+                }
+                for field in benchmark_fields
+            }
+        }
+        result.append(player_dict)
+    return result

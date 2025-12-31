@@ -4,7 +4,6 @@ Works with Claude Desktop (stdio) AND Cloud Run (HTTP)
 """
 import logging
 import os
-from re import L
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -41,7 +40,7 @@ async def app_lifespan(server):
         logger.info("ℹ️  No API key - using anonymous access (50 req/min)")
 
     # Startup
-    await load_reference_data()
+    load_reference_data()
     logger.info("✅ Reference data loaded")
 
     try:

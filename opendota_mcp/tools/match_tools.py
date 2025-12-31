@@ -7,7 +7,7 @@ from ..client import fetch_api, get_http_client, rate_limiter
 from ..config import OPENDOTA_BASE_URL, format_rank_tier
 from ..utils import get_account_id
 from typing import List, Dict, Any, Union
-from ..resolvers import get_hero_by_id_logic, extract_match_sections, process_player_items
+from ..resolvers import get_hero_by_id_logic, extract_match_sections, process_player_items, build_player_list
 from datetime import datetime
 
 logger = logging.getLogger("opendota-server")
@@ -168,44 +168,7 @@ def register_match_tools(mcp: FastMCP):
             return result
         except Exception as e:
             logger.error(f"Failed to request parse for match {match_id}: {str(e)}")
-            raise
-
-    async def _build_player_list(players: List[Dict[str, Any]], benchmark_fields: List[str]) -> List[Dict[str, Any]]:
-        """Helper function to build player list with item data"""
-        result = []
-        for p in players:
-            # Process item data
-            items_data = await process_player_items(p)
-
-            player_dict = {
-                "account_id": p.get("account_id"),
-                "player_slot": p.get("player_slot"),
-                "hero_id": p.get("hero_id"),
-                "hero_name": (await get_hero_by_id_logic(p.get("hero_id"))).get("localized_name"),
-                "personaname": p.get("personaname"),
-                "team": "radiant" if p.get("player_slot", 0) < 128 else "dire",
-                "kills": p.get("kills"),
-                "deaths": p.get("deaths"),
-                "assists": p.get("assists"),
-                "gold_per_min": p.get("gold_per_min"),
-                "xp_per_min": p.get("xp_per_min"),
-                "net_worth": p.get("net_worth"),
-                "hero_damage": p.get("hero_damage"),
-                "tower_damage": p.get("tower_damage"),
-                "hero_healing": p.get("hero_healing"),
-                "last_hits": p.get("last_hits"),
-                "denies": p.get("denies"),
-                "items": items_data,
-                "benchmarks": {
-                    field: {
-                        "raw": p.get("benchmarks", {}).get(field, {}).get("raw"),
-                        "pct": (p.get("benchmarks", {}).get(field, {}).get("pct") or 0) * 100
-                    }
-                    for field in benchmark_fields
-                }
-            }
-            result.append(player_dict)
-        return result
+            return {"error": str(e)}
 
     @mcp.tool()
     async def get_match_details(match_id: int) -> Dict[str, Any]:
@@ -360,7 +323,7 @@ def register_match_tools(mcp: FastMCP):
                     "picks_bans": sections.get('picks_bans', []),
                     "players_summary": {
                         "count": len(sections.get('players', [])),
-                        "players": await _build_player_list(sections.get('players', []), benchmark_fields)
+                        "players": await build_player_list(sections.get('players', []), benchmark_fields)
                     },
                     "gold_advantage": sections.get('radiant_gold_adv', []),
                     "xp_advantage": sections.get('radiant_xp_adv', []),

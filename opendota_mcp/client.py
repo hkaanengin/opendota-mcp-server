@@ -23,7 +23,7 @@ async def get_http_client() -> httpx.AsyncClient:
         # Add API key to Authorization header if available
         if OPENDOTA_API_KEY:
             headers["Authorization"] = f"Bearer {OPENDOTA_API_KEY}"
-            logger.info("HTTP client initialized with API key authentication")
+            logger.info(f"Using API key: {OPENDOTA_API_KEY[:4]}...")
         else:
             logger.info("HTTP client initialized (anonymous access)")
 
@@ -49,7 +49,7 @@ async def cleanup_http_client():
         logger.info("HTTP client closed")
 
 
-async def fetch_api(endpoint: str, params: Dict[str, Any] = None) -> dict:
+async def fetch_api(endpoint: str, params: Optional[Dict[str, Any]] = None) -> dict:
     """
     Fetch data from OpenDota API with rate limiting.
 
@@ -69,10 +69,15 @@ async def fetch_api(endpoint: str, params: Dict[str, Any] = None) -> dict:
         params = {}
 
     url = f"{OPENDOTA_BASE_URL}{endpoint}"
-    logger.info(f"Fetching data from {url}, with params: {params}")
+    logger.debug(f"Fetching data from {url}, with params: {params}")
 
-    response = await client.get(url, params=params)
-    response.raise_for_status()
-
-    logger.info(f"Received response status: {response.status_code}")
-    return response.json()
+    try:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP {e.response.status_code} error from {url}: {e.response.text[:200]}")
+        raise
+    except httpx.RequestError as e:
+        logger.error(f"Request failed for {url}: {str(e)}")
+        raise

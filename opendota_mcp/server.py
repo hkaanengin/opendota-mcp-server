@@ -114,6 +114,66 @@ async def echo_request(request: Request):
         "client": request.client.host if request.client else None
     })
 
+@mcp.custom_route("/call_tool", methods=["POST"])
+async def call_tool_http(request: Request):
+    try:
+        body = await request.json()
+
+        tool_name = body.get("tool_name")
+        arguments = body.get("arguments", {})
+
+        if not tool_name:
+            return JSONResponse(
+                {"status": "error", "message": "Missing tool_name"},
+                status_code=400,
+            )
+
+        if not isinstance(arguments, dict):
+            return JSONResponse(
+                {"status": "error", "message": "arguments must be a dict"},
+                status_code=400,
+            )
+
+        logger.info(f"HTTP tool call: {tool_name} with args: {arguments}")
+
+        # 🔑 Get registered tools
+        tools = await mcp.get_tools()
+
+        if tool_name not in tools:
+            return JSONResponse(
+                {
+                    "status": "error",
+                    "message": f"Tool '{tool_name}' not found",
+                },
+                status_code=404,
+            )
+
+        tool = tools[tool_name]
+
+        # 🔑 Call the tool function directly
+        result = await tool.fn(**arguments)
+
+        logger.info(f"Tool {tool_name} completed successfully")
+
+        return JSONResponse(
+            {
+                "status": "success",
+                "tool_name": tool_name,
+                "result": result,
+            }
+        )
+
+    except Exception as e:
+        logger.error("Error calling tool via HTTP", exc_info=True)
+        return JSONResponse(
+            {
+                "status": "error",
+                "message": str(e),
+                "tool_name": tool_name if "tool_name" in locals() else None,
+            },
+            status_code=500,
+        )
+
 def main():
     """Main entry point"""
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()

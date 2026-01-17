@@ -698,7 +698,6 @@ async def process_player_items(player: Dict[str, Any]) -> Dict[str, Any]:
             if cost >= 2000 and time >= 0:
                 key_timings.append({
                     "item": item_name,
-                    "time": time,
                     "time_formatted": format_time(time)
                 })
 
@@ -744,6 +743,11 @@ async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: Lis
             "hero_damage": p.get("hero_damage"),
             "tower_damage": p.get("tower_damage"),
             "hero_healing": p.get("hero_healing"),
+            "damage_taken": sum(p.get("damage_taken", {}).values()),
+            "teamfight_participation": p.get("teamfight_participation"),
+            "observer_placed": p.get("obs_placed"),
+            "sentry_placed": p.get("sen_placed"),
+            "stuns": p.get("stuns"),
             "last_hits": p.get("last_hits"),
             "denies": p.get("denies"),
             "items": items_data,

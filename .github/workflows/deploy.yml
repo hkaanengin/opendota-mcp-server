@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to Cloud Run?'
+        required: true
+        type: boolean
+        default: false
 
 env:
   PROJECT_ID: opendota-mcp
@@ -59,6 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy to Cloud Run
     needs: [build-and-push]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true' || github.event_name == 'push'
     env:
       IMAGE_TAG: docker.io/${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ needs.build-and-push.outputs.sha-short }}
     

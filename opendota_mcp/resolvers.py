@@ -727,7 +727,7 @@ async def process_player_items(player: Dict[str, Any]) -> Dict[str, Any]:
         "key_timings": key_timings
     }
 
-async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: List[str]) -> List[Dict[str, Any]]:
+async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: List[str]) -> Dict[str, Any]:
     """
     Build structured player list with item data and benchmarks for match details.
 
@@ -736,11 +736,10 @@ async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: Lis
         benchmark_fields: List of benchmark field names to include
 
     Returns:
-        List of structured player dictionaries with:
-        - Basic info (account_id, hero_name, team, etc.)
-        - Performance stats (kills, deaths, assists, GPM, XPM, etc.)
-        - Item data (final build, neutral item, key timings)
-        - Benchmarks (percentiles for specified fields)
+        Dictionary containing:
+        - players: List of structured player dictionaries
+        - gold_timings_per_hero: Dict mapping hero name to gold_t list
+        - xp_timings_per_hero: Dict mapping hero name to xp_t list
     """
     def format_time(seconds: int) -> str:
         """Format seconds to MM:SS"""
@@ -749,13 +748,29 @@ async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: Lis
         return f"{mins}:{secs:02d}"
 
     result = []
+    gold_timings_per_hero = {}
+    xp_timings_per_hero = {}
+
     for p in players:
         # Process item data
         items_data = await process_player_items(p)
 
+        # Get hero name once for reuse
+        hero_id = p.get("hero_id")
+        hero_data = await get_hero_by_id_logic(hero_id)
+        hero_name = hero_data.get("localized_name", f"Hero {hero_id}")
+
+        # Build gold/xp timings per hero
+        gold_t = p.get("gold_t", [])
+        xp_t = p.get("xp_t", [])
+        if gold_t:
+            gold_timings_per_hero[hero_name] = gold_t
+        if xp_t:
+            xp_timings_per_hero[hero_name] = xp_t
+
         player_dict = {
             "account_id": p.get("account_id"),
-            "hero_name": (await get_hero_by_id_logic(p.get("hero_id"))).get("localized_name"),
+            "hero_name": hero_name,
             "personaname": p.get("personaname"),
             "team": "radiant" if p.get("player_slot", 0) < 128 else "dire",
             "kills": p.get("kills"),
@@ -788,4 +803,95 @@ async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: Lis
             }
         }
         result.append(player_dict)
+
+    return {
+        "players": result,
+        "gold_timings_per_hero": gold_timings_per_hero,
+        "xp_timings_per_hero": xp_timings_per_hero
+    }
+
+async def build_teamfight_list(teamfights: List[Dict[str, Any]], players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build structured teamfight list with player data and teamfight stats for match details.
+
+    Args:
+        teamfights: List of teamfight dictionaries from match data
+        players: List of player dictionaries from match data (needed for hero names)
+
+    Returns:
+        List of structured teamfight dictionaries with:
+        - Basic info (start, end, last_death, deaths)
+        - Player data with hero names, kills, deaths, damage, healing, gold/xp delta
+    """
+    def format_time(seconds: int) -> str:
+        """Format seconds to MM:SS"""
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}:{secs:02d}"
+
+    # Build mapping from teamfight player index (0-9) to hero name
+    # Teamfight players are ordered: indices 0-4 = Radiant, 5-9 = Dire
+    # player_slot: 0-127 = Radiant, 128-255 = Dire
+    player_index_to_hero = {}
+    for p in players:
+        player_slot = p.get("player_slot", 0)
+        hero_id = p.get("hero_id")
+
+        # Calculate teamfight index from player_slot
+        if player_slot < 128:
+            # Radiant: slots 0-4 map to indices 0-4
+            tf_index = player_slot
+        else:
+            # Dire: slots 128-132 map to indices 5-9
+            tf_index = (player_slot - 128) + 5
+
+        hero_data = await get_hero_by_id_logic(hero_id)
+        player_index_to_hero[tf_index] = hero_data.get("localized_name", f"Hero {hero_id}")
+
+    result = []
+    for tf in teamfights:
+        tf_players = []
+        radiant_gold_delta = 0
+        dire_gold_delta = 0
+
+        for idx, player_info in enumerate(tf.get("players", [])):
+            hero_name = player_index_to_hero.get(idx, f"Player {idx}")
+            team = "radiant" if idx < 5 else "dire"
+            gold_delta = player_info.get("gold_delta", 0)
+
+            # Accumulate gold delta per team
+            if idx < 5:
+                radiant_gold_delta += gold_delta
+            else:
+                dire_gold_delta += gold_delta
+
+            player_dict = {
+                "hero_name": hero_name,
+                "team": team,
+                "deaths": player_info.get("deaths", 0),
+                "killed": player_info.get("killed", {}),
+                "damage": player_info.get("damage", 0),
+                "healing": player_info.get("healing", 0),
+                "gold_delta": gold_delta,
+                "xp_delta": player_info.get("xp_delta", 0),
+                "buybacks": player_info.get("buybacks", 0),
+                "ability_uses": player_info.get("ability_uses", {}),
+                "item_uses": player_info.get("item_uses", {}),
+            }
+            tf_players.append(player_dict)
+
+        # Gold swing: positive = Radiant advantage, negative = Dire advantage
+        gold_swing = radiant_gold_delta - dire_gold_delta
+
+        teamfight_dict = {
+            "start": format_time(tf.get("start", 0)),
+            "end": format_time(tf.get("end", 0)),
+            "last_death": format_time(tf.get("last_death", 0)),
+            "deaths": tf.get("deaths", 0),
+            "radiant_gold_delta": radiant_gold_delta,
+            "dire_gold_delta": dire_gold_delta,
+            "gold_swing": gold_swing,
+            "players": tf_players
+        }
+        result.append(teamfight_dict)
     return result

@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - master
-  pull_request:
-    branches:
-      - master
-    types:
-      - closed
   workflow_dispatch:
     inputs:
       deploy:
@@ -21,17 +16,11 @@ env:
   PROJECT_ID: opendota-mcp
   SERVICE_NAME: opendota-mcp-server
   REGION: europe-west1
-  AUTO_DEPLOY_ON_MERGE: 'false'  # Set to 'false' to disable auto-deployment on merge
   
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     name: Build & Push to Docker Hub
-    # Only run if it's a push to master, a merged PR, or manual dispatch
-    if: |
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       sha-short: ${{ steps.vars.outputs.sha_short }}
@@ -77,9 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy to Cloud Run
     needs: [build-and-push]
-    if: |
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true') ||
-      ((github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) && env.AUTO_DEPLOY_ON_MERGE == 'true')
+    # Change 'true' to 'false' below to disable auto-deployment on push to master
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'false') || (github.event_name == 'push' && true)
     env:
       IMAGE_TAG: docker.io/${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ needs.build-and-push.outputs.sha-short }}
     

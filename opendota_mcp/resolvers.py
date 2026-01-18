@@ -7,6 +7,7 @@ from .utils import get_account_id
 from .config import VALID_STAT_FIELDS, REFERENCE_DATA, LANE_MAPPING, LANE_DESCRIPTIONS, ITEM_NAME_CONVERSION
 from .client import fetch_api
 from difflib import SequenceMatcher, get_close_matches
+from datetime import datetime
 
 logger = logging.getLogger("opendota-server")
 
@@ -547,6 +548,12 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
         >>> teamfights = sections['teamfights']
         >>> metadata = sections['metadata']
     """
+    def format_time(seconds: int) -> str:
+        """Format seconds to MM:SS"""
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}:{secs:02d}"
+
     # Handle JSON-RPC wrapper (if present)
     try:
         if 'result' in data and 'structuredContent' in data.get('result', {}):
@@ -577,8 +584,7 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
 
     section_keys = [
         'players', 'teamfights', 'objectives', 'chat', 'picks_bans',
-        'radiant_gold_adv', 'radiant_xp_adv', 'cosmetics', 'od_data',
-        'all_word_counts', 'my_word_counts'
+        'radiant_gold_adv', 'radiant_xp_adv', 'cosmetics', 'all_word_counts'
     ]
 
     for section in section_keys:
@@ -591,7 +597,21 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     try:
         metadata = {k: v for k, v in match.items()
                     if not isinstance(v, (list, dict)) or k in ['all_word_counts', 'my_word_counts']}
-        sections['metadata'] = metadata
+        #sections['metadata'] = metadata
+        sections['metadata'] = {
+            "match_id": metadata.get("match_id", 0),
+            "match_date" : datetime.fromtimestamp(metadata.get("start_time")).strftime("%B %d, %Y"),
+            "match_duration": format_time(metadata.get("duration", 0)),
+            "radiant_score": metadata.get("radiant_score", 0),
+            "dire_score": metadata.get("dire_score", 0),
+            "radiant_win": metadata.get("radiant_win", False),
+            "first_blood_time": format_time(metadata.get("first_blood_time", 0)),
+            "replay_url": metadata.get("replay_url", ""),
+            "replay_salt": metadata.get("replay_salt", 0),
+            "patch": metadata.get("patch", 0),
+            "game_mode": metadata.get("game_mode", 0),
+            "region": metadata.get("region", 0),
+        }
         logger.info(f"Extracted metadata with {len(metadata)} fields")
     except AttributeError as e:
         logger.error(f"Failed to extract metadata: {e}")
@@ -722,6 +742,12 @@ async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: Lis
         - Item data (final build, neutral item, key timings)
         - Benchmarks (percentiles for specified fields)
     """
+    def format_time(seconds: int) -> str:
+        """Format seconds to MM:SS"""
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}:{secs:02d}"
+
     result = []
     for p in players:
         # Process item data
@@ -729,28 +755,30 @@ async def build_player_list(players: List[Dict[str, Any]], benchmark_fields: Lis
 
         player_dict = {
             "account_id": p.get("account_id"),
-            "player_slot": p.get("player_slot"),
-            "hero_id": p.get("hero_id"),
             "hero_name": (await get_hero_by_id_logic(p.get("hero_id"))).get("localized_name"),
             "personaname": p.get("personaname"),
             "team": "radiant" if p.get("player_slot", 0) < 128 else "dire",
             "kills": p.get("kills"),
             "deaths": p.get("deaths"),
             "assists": p.get("assists"),
+            "net_worth": p.get("net_worth"),
             "gold_per_min": p.get("gold_per_min"),
             "xp_per_min": p.get("xp_per_min"),
-            "net_worth": p.get("net_worth"),
             "hero_damage": p.get("hero_damage"),
             "tower_damage": p.get("tower_damage"),
             "hero_healing": p.get("hero_healing"),
             "damage_taken": sum(p.get("damage_taken", {}).values()),
             "teamfight_participation": p.get("teamfight_participation"),
-            "observer_placed": p.get("obs_placed"),
-            "sentry_placed": p.get("sen_placed"),
-            "stuns": p.get("stuns"),
+            "time_spent_dead": format_time(p.get("life_state_dead", 0)),
             "last_hits": p.get("last_hits"),
             "denies": p.get("denies"),
             "items": items_data,
+            "support_stats": {
+                "observer_placed": p.get("obs_placed"),
+                "sentry_placed": p.get("sen_placed"),
+                "camp_stacked": p.get("camps_stacked"),
+                "stuns": p.get("stuns"),
+            },
             "benchmarks": {
                 field: {
                     "raw": p.get("benchmarks", {}).get(field, {}).get("raw"),

@@ -66,10 +66,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy to Cloud Run
     needs: [build-and-push]
-    # Change 'true' to 'false' below to disable auto-deployment on push to master
-    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'false') || (github.event_name == 'push' && true)
+    # Change 'true' to 'false' below to disable auto-deployment on push to master: (github.event_name == 'push' && false) == No Deploy
+    if: (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy == 'true') || (github.event_name == 'push' && false)
     env:
-      IMAGE_TAG: docker.io/${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ needs.build-and-push.outputs.sha-short }}
+      IMAGE_TAG: docker.io/${{ secrets.DOCKER_USERNAME }}/opendota-mcp-server:sha-${{ needs.build-and-push.outputs.sha_short }}
     
     steps:
       - name: 🔑 Authenticate to Google Cloud

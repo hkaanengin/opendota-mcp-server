@@ -7,7 +7,7 @@ from ..client import fetch_api, get_http_client, rate_limiter
 from ..config import OPENDOTA_BASE_URL, format_rank_tier
 from ..utils import get_account_id
 from typing import List, Dict, Any, Union
-from ..resolvers import get_hero_by_id_logic, extract_match_sections, process_player_items, build_player_list
+from ..resolvers import get_hero_by_id_logic, extract_match_sections, process_player_items, build_player_list, build_teamfight_list
 from datetime import datetime
 
 logger = logging.getLogger("opendota-server")
@@ -310,23 +310,32 @@ def register_match_tools(mcp: FastMCP):
                 logger.info(f"Match {match_id} is parsed, returning summarized data")
                 sections = extract_match_sections(response)
 
+                raw_teamfights = response.get('teamfights', [])
+                raw_players = response.get('players', [])
+                formatted_teamfights = await build_teamfight_list(raw_teamfights, raw_players)
+
+                # Build player list with timings (returns dict with players, gold_timings, xp_timings)
+                player_data = await build_player_list(sections.get('players', []), benchmark_fields)
+
                 # Return summarized version (same as get_parsed_match_details)
                 return {
                     "parsed": True,
                     "metadata": sections.get('metadata', {}),
                     "teamfights_summary": {
-                        "count": len(sections.get('teamfights', [])),
-                        "teamfights": sections.get('teamfights', [])
+                        "count": len(formatted_teamfights),
+                        "teamfights": formatted_teamfights
                     },
                     "objectives": sections.get('objectives', []),
                     "chat": sections.get('chat', []),
                     "picks_bans": sections.get('picks_bans', []),
                     "players_summary": {
-                        "count": len(sections.get('players', [])),
-                        "players": await build_player_list(sections.get('players', []), benchmark_fields)
+                        "count": len(player_data['players']),
+                        "players": player_data['players']
                     },
                     "gold_advantage": sections.get('radiant_gold_adv', []),
                     "xp_advantage": sections.get('radiant_xp_adv', []),
+                    "gold_timings_per_hero": player_data['gold_timings_per_hero'],
+                    "xp_timings_per_hero": player_data['xp_timings_per_hero']
                 }
             else:
                 # Match is NOT parsed - return full data (it's small enough)

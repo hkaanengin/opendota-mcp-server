@@ -2,6 +2,7 @@
 Player statistics tools
 """
 from typing import Dict, Any, Optional, List, Union
+import asyncio
 import httpx
 import logging
 from datetime import datetime
@@ -62,43 +63,41 @@ def register_player_tools(mcp: FastMCP):
         try:
             account_id = await get_account_id(player_name)
             player = Player(account_id=account_id)
-            
-            logger.info(f"Fetching player profile for account_id: {account_id}")
-            profile_data = await fetch_api(f"/players/{account_id}")
-            
+
+            # Fetch all three API endpoints in parallel
+            logger.info(f"Fetching player data for account_id: {account_id}")
+            profile_data, wl_data, heroes_data = await asyncio.gather(
+                fetch_api(f"/players/{account_id}"),
+                fetch_api(f"/players/{account_id}/wl"),
+                fetch_api(f"/players/{account_id}/heroes")
+            )
+
             if 'profile' in profile_data:
                 profile = profile_data['profile']
                 player.personaname = profile.get('personaname')
                 player.avatarfull = profile.get('avatarfull')
                 player.profileurl = profile.get('profileurl')
-            
-            logger.info(f"Fetching win/loss stats for account_id: {account_id}")
-            wl_data = await fetch_api(f"/players/{account_id}/wl")
 
             player.win_count = wl_data.get('win')
             player.lose_count = wl_data.get('lose')
-            # win_rate is automatically calculated as a property
             
-            logger.info(f"Fetching favorite heroes for account_id: {account_id}")
-            heroes_data = await fetch_api(f"/players/{account_id}/heroes")
-            
-            top_10_heroes = heroes_data[:10]
+            # Build favorite heroes list
             player.fav_heroes = []
-            for hero in top_10_heroes:
+            for hero in heroes_data[:10]:
                 hero_id = hero.get('hero_id')
-                if hero_id is not None:
-                    hero_info = await get_hero_by_id_logic(hero_id)
-                    if "localized_name" in hero_info:
-                        hero_name = hero_info["localized_name"]
-                        games_played = hero.get('games')
-                        win_count = hero.get("win")
-                        win_rate = round((win_count / games_played) * 100, 2) if games_played and games_played > 0 else 0.0
-                        player.fav_heroes.append({
-                            "hero_name": hero_name,
-                            "games_played": games_played,
-                            "win_count": win_count,
-                            "win_rate": win_rate
-                            })
+                if hero_id is None:
+                    continue
+                hero_info = await get_hero_by_id_logic(hero_id)
+                if "localized_name" not in hero_info:
+                    continue
+                games_played = hero.get('games', 0)
+                win_count = hero.get('win', 0)
+                player.fav_heroes.append({
+                    "hero_name": hero_info["localized_name"],
+                    "games_played": games_played,
+                    "win_count": win_count,
+                    "win_rate": round((win_count / games_played) * 100, 2) if games_played > 0 else 0.0
+                })
             
             logger.info(f"Successfully retrieved complete info for {player_name}")
             return player.to_dict()

@@ -308,7 +308,7 @@ def register_match_tools(mcp: FastMCP):
 
             if is_parsed:
                 logger.info(f"Match {match_id} is parsed, returning summarized data")
-                sections = extract_match_sections(response)
+                sections = await extract_match_sections(response)
 
                 raw_teamfights = response.get('teamfights', [])
                 raw_players = response.get('players', [])

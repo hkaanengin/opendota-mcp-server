@@ -6,6 +6,7 @@ import logging
 from .utils import get_account_id
 from .config import VALID_STAT_FIELDS, REFERENCE_DATA, LANE_MAPPING, LANE_DESCRIPTIONS, ITEM_NAME_CONVERSION
 from .client import fetch_api
+from .classes import ObjectiveProcessor
 from difflib import SequenceMatcher, get_close_matches
 from datetime import datetime
 
@@ -524,7 +525,7 @@ def get_aghs_details_logic(hero_id: int) -> Dict[str, Any]:
     logger.error(f"No Aghanim's details found for hero ID {hero_id}")
     return {"error": f"No Aghanim's details found for hero ID {hero_id}"}
 
-def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
+async def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract match sections as a dictionary.
 
@@ -543,7 +544,7 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     Example:
         >>> from opendota_mcp.split_parsed_match import extract_match_sections
         >>> response = await fetch_api("/matches/12345")
-        >>> sections = extract_match_sections(response)
+        >>> sections = await extract_match_sections(response)
         >>> players = sections['players']
         >>> teamfights = sections['teamfights']
         >>> metadata = sections['metadata']
@@ -583,7 +584,7 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
     sections = {}
 
     section_keys = [
-        'players', 'teamfights', 'objectives', 'chat', 'picks_bans',
+        'players', 'teamfights', 'chat', 'picks_bans',
         'radiant_gold_adv', 'radiant_xp_adv', 'cosmetics', 'all_word_counts'
     ]
 
@@ -591,7 +592,14 @@ def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
         if section in match:
             sections[section] = match[section]
 
+    # Process objectives with human-readable descriptions
+    if 'objectives' in match and 'players' in match:
+        sections['objectives'] = await build_objectives(match['objectives'], match['players'])
+    elif 'objectives' in match:
+        sections['objectives'] = match['objectives']  # Fallback to raw if no players
+
     logger.info(f"Extracted {len(sections)} sections: {list(sections.keys())}")
+
 
     # Add metadata (all scalar values)
     try:
@@ -895,3 +903,35 @@ async def build_teamfight_list(teamfights: List[Dict[str, Any]], players: List[D
         }
         result.append(teamfight_dict)
     return result
+
+async def build_objectives(objectives: List[Dict[str, Any]], players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Build structured objectives list with human-readable descriptions.
+
+    Args:
+        objectives: List of objective dictionaries from match data
+        players: List of player dictionaries (needed for hero names)
+
+    Returns:
+        List of structured objective dictionaries with:
+        - time: Formatted time (MM:SS)
+        - type: Short event type (e.g., "tower", "courier", "roshan")
+        - description: Human-readable description
+        - team: "radiant" or "dire" (who benefited)
+    """
+    # Build player slot to hero name mapping
+    slot_to_hero = {}
+    for p in players:
+        player_slot = p.get("player_slot", 0)
+        hero_id = p.get("hero_id")
+        hero_data = await get_hero_by_id_logic(hero_id)
+        slot_to_hero[player_slot] = hero_data.get("localized_name", f"Hero {hero_id}")
+
+    # Create processor with context
+    processor = ObjectiveProcessor(slot_to_hero)
+
+    structured_objectives = []
+    for obj in objectives:
+        structured_objectives.append(processor.process(obj))
+
+    return structured_objectives

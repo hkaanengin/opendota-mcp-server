@@ -608,7 +608,7 @@ async def extract_match_sections(data: Dict[str, Any]) -> Dict[str, Any]:
         #sections['metadata'] = metadata
         sections['metadata'] = {
             "match_id": metadata.get("match_id", 0),
-            "match_date" : datetime.fromtimestamp(metadata.get("start_time")).strftime("%B %d, %Y"),
+            "match_date": datetime.fromtimestamp(metadata.get("start_time")).strftime("%Y-%m-%d"),
             "match_duration": format_time(metadata.get("duration", 0)),
             "radiant_score": metadata.get("radiant_score", 0),
             "dire_score": metadata.get("dire_score", 0),

@@ -89,7 +89,7 @@ def register_match_tools(mcp: FastMCP):
             structured_result = [
                 {
                     "match_id": match.get("match_id"),
-                    "match_date": datetime.fromtimestamp(match.get("start_time")).strftime("%B %d, %Y"),
+                    "match_date": datetime.fromtimestamp(match.get("start_time")).strftime("%Y-%m-%d"),
                     "duration": f"{match.get('duration', 0) // 60}:{match.get('duration', 0) % 60:02d}",
                     "game_mode": match.get("game_mode"), #maybe add constants for game modes
                     "hero_name": (await get_hero_by_id_logic(match.get("hero_id"))).get("localized_name"),

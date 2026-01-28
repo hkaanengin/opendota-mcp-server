@@ -162,7 +162,7 @@ def register_misc_tools(mcp: FastMCP):
             updated_response = [
                 {**item, 
                 "hero_name": (await get_hero_by_id_logic(item["hero_id"])).get('localized_name'),
-                "start_time": datetime.fromtimestamp(item.get("start_time")).strftime("%B %d, %Y")
+                "start_time": datetime.fromtimestamp(item.get("start_time")).strftime("%Y-%m-%d")
                 }
                 for item in response
             ]
@@ -174,7 +174,7 @@ def register_misc_tools(mcp: FastMCP):
             logger.error(f"Unexpected error: {e}")
             return {"error": str(e)}
 
-    @mcp.tool()
+    @mcp.tool() #Have a look athis. Might be too big of a response.
     async def get_scenarios_lane_roles(
         lane_role: Optional[Union[int, str]] = None,
         hero_name: Optional[Union[int, str]] = None,

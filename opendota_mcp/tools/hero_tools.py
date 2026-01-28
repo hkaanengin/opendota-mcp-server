@@ -57,7 +57,7 @@ def register_hero_tools(mcp: FastMCP):
             logger.error(f"Error resolving hero '{hero}': {e}")
             return {"error": str(e)}
 
-    @mcp.tool()
+    @mcp.tool() #Have a look at this. Add hero limit etc.
     async def get_hero_matchups(hero: Union[int, str]) -> Union[List[Dict[str, Any]], Dict[str, str]]:
         """
         Get matchup statistics showing how a hero performs against all other heroes.

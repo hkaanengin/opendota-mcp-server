@@ -209,7 +209,7 @@ def register_player_tools(mcp: FastMCP):
             logger.error(f"Error getting win/loss for '{player_name}': {e}")
             return {"error": str(e)}
 
-    @mcp.tool()
+    @mcp.tool() #Have a look at this. Limit hero etc.
     async def get_heroes_played(
         player_name: str,
         limit: Optional[int] = None,
@@ -307,7 +307,7 @@ def register_player_tools(mcp: FastMCP):
             for element in result:
                 structured_result.append({
                     "hero_id": (await get_hero_by_id_logic(element["hero_id"])).get("localized_name"),
-                    "last_played": datetime.fromtimestamp(element.get("last_played")).strftime("%B %d, %Y"),
+                    "last_played": datetime.fromtimestamp(element.get("last_played")).strftime("%Y-%m-%d"),
                     "wins": element["win"],
                     "games_played": element["games"],
                     "win_rate": f"{int(element['win'])/int(element['games'])*100:.2f}" if element['games'] > 0 else "0.0"
@@ -421,7 +421,7 @@ def register_player_tools(mcp: FastMCP):
                 structured_result.append({
                     "account_id": peer["account_id"],
                     "personaname": peer["personaname"],
-                    "last_played": datetime.fromtimestamp(peer.get("last_played")).strftime("%B %d, %Y"),
+                    "last_played": datetime.fromtimestamp(peer.get("last_played")).strftime("%Y-%m-%d"),
                     "wins": peer["win"],
                     "games_played": peer["games"],
                     "win_rate": f"{int(peer['win'])/int(peer['games'])*100:.2f}" if peer['games'] > 0 else "0.0",
@@ -437,7 +437,7 @@ def register_player_tools(mcp: FastMCP):
             logger.error(f"Error getting peers for '{player_name}': {e}")
             return {"error": str(e)}
 
-    @mcp.tool()
+    @mcp.tool() #Have a look at this. Response might be too big.
     async def get_player_totals(
         player_name: str,
         limit: Optional[int] = None,

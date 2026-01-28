@@ -64,7 +64,7 @@ async def health_check(request: Request):
 
 @mcp.custom_route("/debug/tools", methods=["GET"])
 async def list_tools(request: Request):
-    """List all registered MCP tools"""
+    """List all registered MCP tools with full descriptions and parameter schemas"""
     try:
         # Use the public get_tools() API (async)
         tools_dict = await mcp.get_tools()
@@ -76,9 +76,13 @@ async def list_tools(request: Request):
                 "description": tool.description or "No description"
             }
 
-            # Truncate long descriptions
-            if len(tool_info["description"]) > 100:
-                tool_info["description"] = tool_info["description"][:100] + "..."
+            # Include parameter schema for structured function calling
+            if hasattr(tool, 'parameters') and tool.parameters:
+                tool_info["parameters"] = tool.parameters
+            elif hasattr(tool, 'inputSchema') and tool.inputSchema:
+                tool_info["parameters"] = tool.inputSchema
+
+            # No truncation - LLM benefits from full descriptions
 
             tools.append(tool_info)
 

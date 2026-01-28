@@ -9,14 +9,14 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pyproject.toml and install dependencies
+# Copy pyproject.toml first (for dependency caching)
 COPY pyproject.toml .
 
-# Install the package and its dependencies
-RUN pip install --no-cache-dir -e .
-
-# Copy application code (including tools folder)
+# Copy source code before install
 COPY opendota_mcp/ ./opendota_mcp/
+
+# Install the package (non-editable for production)
+RUN pip install --no-cache-dir .
 
 
 ENV PYTHONUNBUFFERED=1 \

@@ -10,6 +10,10 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that pr
 - **Rate Limiting** - Built-in protection respecting OpenDota API limits
 - **Reference Data Caching** - Fast lookups with local hero/item data
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/hkaanengin-opendota-mcp-server).
+
 ## Available Tools
 
 ### Player Tools (6 tools)

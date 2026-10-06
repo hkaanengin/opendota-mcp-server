@@ -1,96 +1,68 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "opendota-mcp-server"
-version = "1.0.0"
-description = "MCP server for OpenDota API - Query Dota 2 player statistics, match data, and hero information"
+version = "2.0.0"
+description = "MCP server for the OpenDota API: ask about Dota 2 players, matches and heroes in natural language"
 readme = "README.md"
-requires-python = ">=3.10"
-authors = [
-    { name = "hkaanengin" }
-]
-keywords = ["mcp", "opendota", "dota2", "api", "fastmcp"]
+requires-python = ">=3.11"
+authors = [{ name = "hkaanengin" }]
+keywords = ["mcp", "opendota", "dota2", "fastmcp"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
-
 dependencies = [
-    "fastmcp==2.13.0.2",
-    "fastapi==0.121.0",
-    "httpx==0.28.1",
-    "python-dotenv==1.2.1",
-    "uvicorn[standard]==0.38.0",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "ruff>=0.3.0",
-    "mypy>=1.8.0",
+    "fastmcp>=4,<5",
+    "httpx>=0.28,<1",
+    "pydantic>=2.12,<3",
+    "pydantic-settings>=2.10,<3",
 ]
 
 [project.scripts]
-opendota-mcp = "opendota_mcp.server:main"
+opendota-mcp-server = "opendota_mcp.server:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["opendota_mcp*"]
-exclude = ["tests*", "*.tests*"]
+[dependency-groups]
+dev = [
+    "mypy>=1.18",
+    "pytest>=9",
+    "pytest-asyncio>=1.2",
+    "respx>=0.22",
+    "ruff>=0.14",
+]
 
-[tool.setuptools.package-data]
-opendota_mcp = ["py.typed"]
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
 
-# Ruff configuration for linting and formatting
+[tool.hatch.build.targets.wheel]
+packages = ["src/opendota_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md", "pyproject.toml", "uv.lock"]
+
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-]
-ignore = [
-    "E501",  # line too long (handled by formatter)
-    "B008",  # do not perform function calls in argument defaults
-]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "RUF"]
 
-[tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
-
-# Pytest configuration
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
 asyncio_mode = "auto"
-addopts = "-v --tb=short"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--strict-markers"
 
-# MyPy configuration for type checking
 [tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-strict_equality = true
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = "fastmcp.*"
-ignore_missing_imports = true
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false

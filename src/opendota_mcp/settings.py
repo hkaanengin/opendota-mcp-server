@@ -9,6 +9,11 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR"]
 
+ANONYMOUS_RATE_LIMIT_RPM = 55
+"""OpenDota allows 60/min without a key; the margin absorbs clock skew at minute boundaries."""
+API_KEY_RATE_LIMIT_RPM = 290
+"""OpenDota allows 300/min with a key."""
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
@@ -21,6 +26,15 @@ class Settings(BaseSettings):
     port: int = Field(default=8080, ge=1, le=65535)
     mcp_auth_token: SecretStr | None = None
     log_level: LogLevel = "INFO"
+
+    @property
+    def rate_limit_rpm(self) -> int:
+        """The override if set, otherwise the default for whether a key is configured."""
+        if self.opendota_rate_limit_rpm is not None:
+            return self.opendota_rate_limit_rpm
+        if self.opendota_api_key is not None:
+            return API_KEY_RATE_LIMIT_RPM
+        return ANONYMOUS_RATE_LIMIT_RPM
 
     @field_validator("log_level", mode="before")
     @classmethod

@@ -8,6 +8,7 @@ any request without a matching route fails, so no test can reach the network.
 
 import json
 from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,11 @@ OPENDOTA_BASE_URL = "https://api.opendota.com/api"
 FIXTURES = Path(__file__).parent / "fixtures" / "opendota"
 
 SETTINGS_ENV_VARS = tuple(name.upper() for name in Settings.model_fields)
+
+API_KEY = "0b5bd1a3-6f4e-4b8a-9f7c-2d1e3c4b5a69"
+"""A well-formed (UUID) OpenDota key for tests."""
+RECORDS = [{"match_id": 1, "start_time": 1791134272, "hero_id": 1, "score": 30}]
+"""A minimal valid `/records/{field}` response."""
 
 
 def load_fixture(name: str) -> Any:
@@ -91,3 +97,25 @@ def app(
 async def client(app: FastMCP) -> AsyncIterator[Client[Any]]:
     async with Client(app) as client:
         yield client
+
+
+Connect = Callable[..., AbstractAsyncContextManager[Client[Any]]]
+
+
+@pytest.fixture
+def connect(
+    make_settings: Callable[..., Settings], opendota: respx.MockRouter, clock: FakeClock
+) -> Connect:
+    """Like `client`, but for an app built from custom settings, e.g. `connect(api_key=...)`."""
+
+    @asynccontextmanager
+    async def connect(**settings: Any) -> AsyncIterator[Client[Any]]:
+        app = create_app(
+            make_settings(**settings),
+            transport=httpx.MockTransport(opendota.async_handler),
+            clock=clock,
+        )
+        async with Client(app) as client:
+            yield client
+
+    return connect

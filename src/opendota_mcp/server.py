@@ -31,7 +31,12 @@ def create_app(
     clock: Clock | None = None,
 ) -> FastMCP:
     """Build the server. `transport` and `clock` are test hooks; production leaves them unset."""
-    api = OpenDotaClient(transport=transport, clock=clock or SystemClock())
+    api = OpenDotaClient(
+        api_key=settings.opendota_api_key,
+        rate_limit_rpm=settings.rate_limit_rpm,
+        transport=transport,
+        clock=clock or SystemClock(),
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastMCP) -> AsyncIterator[None]:

@@ -117,9 +117,9 @@ async def test_get_records_publishes_an_output_schema_and_is_read_only(
     "response",
     [
         {"json": {"not": "a list"}},
-        {"status_code": 500, "text": "Internal Server Error"},
+        {"status_code": 404, "text": "Not Found"},
     ],
-    ids=["malformed payload", "server error"],
+    ids=["malformed payload", "unexpected status"],
 )
 async def test_unexpected_failure_is_an_mcp_error_without_internals(
     client: Client[Any], opendota: respx.MockRouter, response: dict[str, Any]

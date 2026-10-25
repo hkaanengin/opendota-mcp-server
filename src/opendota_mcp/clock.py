@@ -13,7 +13,10 @@ class Clock(Protocol):
 
 class SystemClock:
     def time(self) -> float:
-        return time.monotonic()
+        # Wall time, not monotonic: OpenDota's rate-limit window resets on the minute.
+        # The response cache shares this clock, so a system clock jump also shifts expiry;
+        # acceptable for TTLs measured in minutes and hours.
+        return time.time()
 
     async def sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds)

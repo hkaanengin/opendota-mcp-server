@@ -7,12 +7,26 @@ from pydantic import Field
 
 from opendota_mcp.api import OpenDotaClient, PlayerNotFoundError
 from opendota_mcp.api.types import PlayerResponse, SearchResult
-from opendota_mcp.models import FindPlayerResult, PlayerCandidate, PlayerHero, PlayerProfileResult
+from opendota_mcp.clock import Clock
+from opendota_mcp.models import (
+    FindPlayerResult,
+    PlayerCandidate,
+    PlayerHero,
+    PlayerProfileResult,
+    PlayerWinLossResult,
+)
 from opendota_mcp.models.formatting import win_rate
 from opendota_mcp.reference import ReferenceStore
-from opendota_mcp.resolve import MAX_CANDIDATES, format_rank_tier, resolve_player, same_name
+from opendota_mcp.resolve import (
+    MAX_CANDIDATES,
+    PlayerFilters,
+    format_rank_tier,
+    resolve_filters,
+    resolve_player,
+    same_name,
+)
 from opendota_mcp.tools.annotations import READ_ONLY
-from opendota_mcp.tools.descriptions import PLAYER
+from opendota_mcp.tools.descriptions import FILTERS, PLAYER
 
 TOP_HEROES = 10
 PROFILE_URL = "https://www.opendota.com/players/{account_id}"
@@ -23,6 +37,7 @@ def register_player_tools(
     api: OpenDotaClient,
     references: ReferenceStore,
     player_aliases: Mapping[str, int],
+    clock: Clock,
 ) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def find_player(
@@ -82,6 +97,32 @@ def register_player_tools(
                 )
                 for entry in sorted(heroes, key=lambda entry: -entry.games)[:TOP_HEROES]
             ],
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_player_win_loss(
+        player: Annotated[str | int, Field(description=PLAYER)],
+        filters: Annotated[PlayerFilters | None, Field(description=FILTERS)] = None,
+    ) -> PlayerWinLossResult:
+        """A Player's wins, losses and win rate, optionally narrowed by `filters`.
+
+        Use for "what's my win rate on Pudge this patch", "how do I do in ranked as pos 1",
+        "my record with a friend in the last 30 days".
+        """
+        reference = await references.current()
+        resolved, applied = await asyncio.gather(
+            resolve_player(player, api, player_aliases),
+            resolve_filters(
+                filters, api=api, aliases=player_aliases, reference=reference, now=clock.time()
+            ),
+        )
+        win_loss = await api.get_player_win_loss(resolved.account_id, applied.params)
+        return PlayerWinLossResult(
+            resolved_player=resolved,
+            wins=win_loss.win,
+            losses=win_loss.lose,
+            win_rate=win_rate(win_loss.win, win_loss.win + win_loss.lose),
+            filters=applied.disclosure,
         )
 
 

@@ -2,6 +2,8 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
+from opendota_mcp.models.filters import FilterDisclosure
+
 
 class ResolvedPlayer(BaseModel):
     """Who the answer is for. Included in every player tool's output."""
@@ -41,3 +43,11 @@ class FindPlayerResult(BaseModel):
     candidates: list[PlayerCandidate] = Field(
         description="The closest names first, then the most recently active."
     )
+
+
+class PlayerWinLossResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    wins: int
+    losses: int
+    win_rate: float | None = Field(description="Percent of games won; null with no games.")
+    filters: FilterDisclosure

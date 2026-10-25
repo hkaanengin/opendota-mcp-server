@@ -13,3 +13,7 @@ PLAYER = (
     "configured on this server, or their exact current Steam display name. Prefer the ID "
     "once known; an ambiguous name fails with candidates to choose from."
 )
+FILTERS = (
+    "Optional: narrow which of the player's matches are counted. Turbo is left out unless "
+    'game_mode is "turbo". The response says what was counted; relay its notes.'
+)

@@ -49,8 +49,9 @@ MAX_RETRY_WAIT = 60.0
 """Longest `Retry-After` worth waiting out inside a tool call; beyond it, fail at once."""
 
 T = TypeVar("T")
-Params = Mapping[str, str | int]
-"""OpenDota query parameters. Part of the cache key, so filtered queries never collide."""
+Params = Mapping[str, str | int | tuple[int, ...]]
+"""OpenDota query parameters; a tuple repeats the key. Part of the cache key, so filtered
+queries never collide."""
 
 _records = TypeAdapter(list[RecordEntry])
 _MISSING = object()
@@ -137,9 +138,11 @@ class OpenDotaClient:
                 raise
             raise PlayerNotFoundError(account_id) from None
 
-    async def get_player_win_loss(self, account_id: int) -> WinLoss:
-        """Wins and losses over all the Player's games."""
-        return await self._get(f"/players/{account_id}/wl", WIN_LOSS, ttl=PLAYER_TTL)
+    async def get_player_win_loss(self, account_id: int, filters: Params | None = None) -> WinLoss:
+        """Wins and losses over the Player's games, narrowed by player filter `filters`."""
+        return await self._get(
+            f"/players/{account_id}/wl", WIN_LOSS, ttl=PLAYER_TTL, params=filters
+        )
 
     async def get_player_heroes(self, account_id: int) -> list[PlayerHeroEntry]:
         """Games and wins on each hero the Player has played."""

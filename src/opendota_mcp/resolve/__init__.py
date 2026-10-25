@@ -1,5 +1,6 @@
 """Natural language → canonical OpenDota values. Failures raise `ToolError`s with suggestions."""
 
+from opendota_mcp.resolve.filters import PlayerFilters, ResolvedFilters, resolve_filters
 from opendota_mcp.resolve.heroes import resolve_hero
 from opendota_mcp.resolve.items import resolve_item
 from opendota_mcp.resolve.medals import format_rank_tier
@@ -8,7 +9,10 @@ from opendota_mcp.resolve.stat_fields import resolve_stat_field
 
 __all__ = [
     "MAX_CANDIDATES",
+    "PlayerFilters",
+    "ResolvedFilters",
     "format_rank_tier",
+    "resolve_filters",
     "resolve_hero",
     "resolve_item",
     "resolve_player",

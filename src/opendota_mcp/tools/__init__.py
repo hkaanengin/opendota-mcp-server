@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from fastmcp import FastMCP
 
 from opendota_mcp.api import OpenDotaClient
+from opendota_mcp.clock import Clock
 from opendota_mcp.reference import ReferenceStore
 from opendota_mcp.tools.heroes import register_hero_tools
 from opendota_mcp.tools.items import register_item_tools
@@ -17,8 +18,9 @@ def register_all_tools(
     api: OpenDotaClient,
     references: ReferenceStore,
     player_aliases: Mapping[str, int],
+    clock: Clock,
 ) -> None:
     register_hero_tools(mcp, references)
     register_item_tools(mcp, references)
-    register_player_tools(mcp, api, references, player_aliases)
+    register_player_tools(mcp, api, references, player_aliases, clock)
     register_records_tools(mcp, api, references)

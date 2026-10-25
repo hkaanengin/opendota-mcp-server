@@ -19,7 +19,18 @@ from pydantic import SecretStr, TypeAdapter, ValidationError
 
 from opendota_mcp.api.cache import HERO_WIDE_TTL, ResponseCache
 from opendota_mcp.api.ratelimit import RateLimiter, seconds_until_next_window
-from opendota_mcp.api.types import RecordEntry
+from opendota_mcp.api.types import (
+    AGHS_DESC,
+    HERO_LORE,
+    HEROES,
+    ITEMS,
+    PATCHES,
+    AghsDescConstant,
+    HeroConstant,
+    ItemConstant,
+    PatchConstant,
+    RecordEntry,
+)
 from opendota_mcp.clock import Clock
 
 logger = logging.getLogger(__name__)
@@ -97,6 +108,27 @@ class OpenDotaClient:
         """Top all-time performances in a record stat (see `RECORD_FIELDS`)."""
         return await self._get(f"/records/{field}", _records, ttl=HERO_WIDE_TTL)
 
+    # Constants are not response-cached: the reference store keeps them and decides when
+    # to refresh, and the items payload alone would crowd the cache.
+
+    async def get_hero_constants(self) -> dict[str, HeroConstant]:
+        """`/constants/heroes`, keyed by hero ID as a string."""
+        return await self._fetch("/constants/heroes", HEROES)
+
+    async def get_item_constants(self) -> dict[str, ItemConstant]:
+        """`/constants/items`, keyed by internal item name."""
+        return await self._fetch("/constants/items", ITEMS)
+
+    async def get_aghs_desc_constants(self) -> list[AghsDescConstant]:
+        return await self._fetch("/constants/aghs_desc", AGHS_DESC)
+
+    async def get_hero_lore_constants(self) -> dict[str, str]:
+        """`/constants/hero_lore`, keyed by hero internal name."""
+        return await self._fetch("/constants/hero_lore", HERO_LORE)
+
+    async def get_patch_constants(self) -> list[PatchConstant]:
+        return await self._fetch("/constants/patch", PATCHES)
+
     async def aclose(self) -> None:
         """Close the connection pool. The next request opens a fresh one."""
         if self._http is not None:
@@ -117,9 +149,13 @@ class OpenDotaClient:
         if cached is not _MISSING:
             logger.debug("GET %s (cached)", path)
             return cached  # type: ignore[no-any-return]
-        value = _parse(adapter, path, await self._send_with_retry("GET", path, params))
+        value = await self._fetch(path, adapter, params)
         self._cache.put(key, value, ttl)
         return value
+
+    async def _fetch(self, path: str, adapter: TypeAdapter[T], params: Params | None = None) -> T:
+        """Fetch and validate a GET response, bypassing the cache."""
+        return _parse(adapter, path, await self._send_with_retry("GET", path, params))
 
     async def _send_with_retry(
         self, method: str, path: str, params: Params | None, *, cost: int = 1

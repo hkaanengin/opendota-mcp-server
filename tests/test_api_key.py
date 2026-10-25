@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from tests.conftest import API_KEY, RECORDS, Connect
+from tests.conftest import API_KEY, RECORDS, Connect, api_calls
 
 
 async def test_the_key_is_sent_as_the_api_key_query_parameter(
@@ -55,7 +55,7 @@ async def test_the_key_never_appears_in_logs_or_error_messages(
             result = await client.call_tool("get_records", {"field": field}, raise_on_error=False)
             errors.extend(getattr(block, "text", "") for block in result.content)
 
-    assert opendota.calls.call_count == len(responses)
+    assert api_calls(opendota) == len(responses)
     assert "/records/kills" in caplog.text, "expected request logging to be captured"
     assert API_KEY not in caplog.text
     assert not [error for error in errors if API_KEY in error]

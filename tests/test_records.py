@@ -6,7 +6,7 @@ import respx
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from tests.conftest import load_fixture
+from tests.conftest import api_calls, load_fixture
 
 
 def one_record(**overrides: Any) -> list[dict[str, Any]]:
@@ -74,7 +74,7 @@ async def test_unknown_stat_fails_listing_valid_stats_without_calling_opendota(
     assert f"Unknown stat {asked!r}" in message
     for valid in ("kills", "gold_per_min", "last_hits", "tower_damage", "duration"):
         assert valid in message
-    assert opendota.calls.call_count == 0
+    assert api_calls(opendota) == 0
 
 
 async def test_duration_records_also_read_as_mmss(

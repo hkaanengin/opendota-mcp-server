@@ -3,9 +3,13 @@
 from fastmcp import FastMCP
 
 from opendota_mcp.api import OpenDotaClient
-from opendota_mcp.reference import Reference
+from opendota_mcp.reference import ReferenceStore
+from opendota_mcp.tools.heroes import register_hero_tools
+from opendota_mcp.tools.items import register_item_tools
 from opendota_mcp.tools.records import register_records_tools
 
 
-def register_all_tools(mcp: FastMCP, api: OpenDotaClient, reference: Reference) -> None:
-    register_records_tools(mcp, api, reference)
+def register_all_tools(mcp: FastMCP, api: OpenDotaClient, references: ReferenceStore) -> None:
+    register_hero_tools(mcp, references)
+    register_item_tools(mcp, references)
+    register_records_tools(mcp, api, references)

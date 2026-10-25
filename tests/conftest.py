@@ -4,11 +4,16 @@ Every behaviour test drives the server the way a model would: build the app from
 test `Settings`, connect FastMCP's in-memory client and call tools by name.
 OpenDota is replayed from recorded responses under `tests/fixtures/opendota/`;
 any request without a matching route fails, so no test can reach the network.
+
+The server fetches `/constants/*` when it starts. Those routes answer with the bundled
+snapshots by default, and a test can override one by name, e.g.
+`opendota.routes["constants/heroes"].respond(500)`.
 """
 
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +27,9 @@ from opendota_mcp.settings import Settings
 
 OPENDOTA_BASE_URL = "https://api.opendota.com/api"
 FIXTURES = Path(__file__).parent / "fixtures" / "opendota"
+SNAPSHOTS = files("opendota_mcp.reference") / "snapshots"
+CONSTANTS = ("heroes", "items", "aghs_desc", "hero_lore", "patch")
+"""The `/constants/{resource}` the server loads at startup."""
 
 SETTINGS_ENV_VARS = tuple(name.upper() for name in Settings.model_fields)
 
@@ -34,6 +42,18 @@ RECORDS = [{"match_id": 1, "start_time": 1791134272, "hero_id": 1, "score": 30}]
 def load_fixture(name: str) -> Any:
     """A recorded OpenDota response, by path relative to `tests/fixtures/opendota/`."""
     return json.loads((FIXTURES / name).read_text())
+
+
+def bundled_constants(resource: str) -> Any:
+    """The snapshot of `/constants/{resource}` shipped in the package."""
+    return json.loads((SNAPSHOTS / f"{resource}.json").read_text(encoding="utf-8"))
+
+
+def api_calls(opendota: respx.MockRouter) -> int:
+    """Outbound OpenDota requests, not counting the `/constants/*` fetched at startup."""
+    return sum(
+        1 for call in opendota.calls if not call.request.url.path.startswith("/api/constants/")
+    )
 
 
 class FakeClock:
@@ -76,7 +96,12 @@ def opendota() -> respx.MockRouter:
     Nothing is patched globally: the app only sees these routes because the factory
     takes the transport as a test hook. Unrouted requests raise.
     """
-    return respx.MockRouter(base_url=OPENDOTA_BASE_URL, assert_all_called=False)
+    router = respx.MockRouter(base_url=OPENDOTA_BASE_URL, assert_all_called=False)
+    for resource in CONSTANTS:
+        router.get(f"/constants/{resource}", name=f"constants/{resource}").respond(
+            json=bundled_constants(resource)
+        )
+    return router
 
 
 @pytest.fixture

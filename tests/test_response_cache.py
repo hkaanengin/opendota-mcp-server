@@ -55,6 +55,9 @@ async def test_cache_hits_never_consume_rate_limit_budget(
     opendota.get("/records/deaths").respond(json=RECORDS)
 
     async with connect(opendota_rate_limit_rpm=1) as client:
+        # A fresh minute, past the waits the startup `/constants/*` fetches needed at 1/min.
+        clock.advance(60)
+        clock.sleeps.clear()
         for _ in range(5):
             await client.call_tool("get_records", {"field": "kills"})
         assert clock.sleeps == []

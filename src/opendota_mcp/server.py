@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from opendota_mcp import __version__
 from opendota_mcp.api import OpenDotaClient
 from opendota_mcp.clock import Clock, SystemClock
-from opendota_mcp.reference import Reference
+from opendota_mcp.reference import ReferenceStore
 from opendota_mcp.settings import Settings
 from opendota_mcp.tools import register_all_tools
 
@@ -31,16 +31,21 @@ def create_app(
     clock: Clock | None = None,
 ) -> FastMCP:
     """Build the server. `transport` and `clock` are test hooks; production leaves them unset."""
+    clock = clock or SystemClock()
     api = OpenDotaClient(
         api_key=settings.opendota_api_key,
         rate_limit_rpm=settings.rate_limit_rpm,
         transport=transport,
-        clock=clock or SystemClock(),
+        clock=clock,
     )
+    references = ReferenceStore(api, clock)
 
     @asynccontextmanager
     async def lifespan(_: FastMCP) -> AsyncIterator[None]:
         try:
+            # Live hero and item data before the first tool call; falls back to the bundled
+            # snapshots, so an unreachable OpenDota never stops the server starting.
+            await references.current()
             yield
         finally:
             await api.aclose()
@@ -55,7 +60,7 @@ def create_app(
         # are written for the model and pass through unchanged.
         mask_error_details=True,
     )
-    register_all_tools(mcp, api, Reference.bundled())
+    register_all_tools(mcp, api, references)
     return mcp
 
 

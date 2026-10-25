@@ -8,12 +8,12 @@ from opendota_mcp.api import OpenDotaClient
 from opendota_mcp.api.types import RECORD_FIELDS
 from opendota_mcp.models import Record, RecordsResult
 from opendota_mcp.models.formatting import mmss
-from opendota_mcp.reference import Reference
+from opendota_mcp.reference import ReferenceStore
 from opendota_mcp.resolve import resolve_stat_field
 from opendota_mcp.tools.annotations import READ_ONLY
 
 
-def register_records_tools(mcp: FastMCP, api: OpenDotaClient, reference: Reference) -> None:
+def register_records_tools(mcp: FastMCP, api: OpenDotaClient, references: ReferenceStore) -> None:
     @mcp.tool(annotations=READ_ONLY)
     async def get_records(
         field: Annotated[
@@ -33,6 +33,7 @@ def register_records_tools(mcp: FastMCP, api: OpenDotaClient, reference: Referen
         """
         stat = resolve_stat_field(field, RECORD_FIELDS)
         entries = await api.get_records(stat)
+        reference = await references.current()
         return RecordsResult(
             stat=stat,
             records=[

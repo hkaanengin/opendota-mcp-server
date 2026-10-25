@@ -1,0 +1,39 @@
+# Item Nicknames: community shorthand that isn't a spelling of the item's name.
+#
+# Each key is an item's internal name (its key in OpenDota `/constants/items`); each
+# value lists its nicknames. Matching ignores case, spaces and punctuation. Typos of
+# real names need no entry: they are matched by spelling. A nickname belongs to
+# exactly one item.
+
+abyssal_blade = ["abyssal"]
+aeon_disk = ["aeon"]
+aghanims_shard = ["agh shard", "aghs shard", "aghanim shard", "shard"]
+bfury = ["bf", "battle furry"]
+black_king_bar = ["bkb", "black king"]
+cyclone = ["euls", "eul"]
+desolator = ["deso"]
+diffusal_blade = ["diffusal"]
+force_staff = ["force"]
+glimmer_cape = ["glimmer"]
+greater_crit = ["daed", "crit"]
+guardian_greaves = ["guardians of grieves", "guardian of grieves", "grieves", "greaves"]
+hand_of_midas = ["midas", "hands of midas"]
+invis_sword = ["sb"]
+lotus_orb = ["lotus"]
+magic_stick = ["stick"]
+magic_wand = ["wand"]
+mekansm = ["mek", "meka"]
+monkey_king_bar = ["mkb", "monkey king"]
+octarine_core = ["octarine"]
+phase_boots = ["phase"]
+power_treads = ["treads", "pt"]
+sange_and_yasha = ["sny", "s&y"]
+sheepstick = ["hex", "sheep", "guinsoo"]
+shivas_guard = ["shivas", "shiva"]
+skadi = ["eyes of skadi"]
+sphere = ["linkens", "linken"]
+spirit_vessel = ["vessel", "spirits vessel", "sprit vessel"]
+tranquil_boots = ["tranquils", "tranqs"]
+travel_boots = ["bot", "bots", "travels"]
+ultimate_scepter = ["aghanim scepter", "aghanim", "agh scepter", "scepter", "aghs"]
+vladmir = ["vlads", "vlad"]

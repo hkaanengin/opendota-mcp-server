@@ -60,7 +60,7 @@ def create_app(
         # are written for the model and pass through unchanged.
         mask_error_details=True,
     )
-    register_all_tools(mcp, api, references)
+    register_all_tools(mcp, api, references, settings.opendota_player_aliases)
     return mcp
 
 

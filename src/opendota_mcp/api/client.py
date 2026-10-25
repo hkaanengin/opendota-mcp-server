@@ -17,7 +17,7 @@ import httpx
 from fastmcp.exceptions import ToolError
 from pydantic import SecretStr, TypeAdapter, ValidationError
 
-from opendota_mcp.api.cache import HERO_WIDE_TTL, ResponseCache
+from opendota_mcp.api.cache import HERO_WIDE_TTL, PLAYER_TTL, ResponseCache
 from opendota_mcp.api.ratelimit import RateLimiter, seconds_until_next_window
 from opendota_mcp.api.types import (
     AGHS_DESC,
@@ -25,11 +25,19 @@ from opendota_mcp.api.types import (
     HEROES,
     ITEMS,
     PATCHES,
+    PLAYER,
+    PLAYER_HEROES,
+    SEARCH,
+    WIN_LOSS,
     AghsDescConstant,
     HeroConstant,
     ItemConstant,
     PatchConstant,
+    PlayerHeroEntry,
+    PlayerResponse,
     RecordEntry,
+    SearchResult,
+    WinLoss,
 )
 from opendota_mcp.clock import Clock
 
@@ -61,6 +69,14 @@ def _parse(adapter: TypeAdapter[T], path: str, payload: Any) -> T:
         return adapter.validate_python(payload)
     except ValidationError as exc:
         raise UnexpectedResponseError(f"Unexpected OpenDota response for {path}: {exc}") from None
+
+
+class PlayerNotFoundError(Exception):
+    """OpenDota has no Player with this Account ID."""
+
+    def __init__(self, account_id: int) -> None:
+        super().__init__(f"no player with account ID {account_id}")
+        self.account_id = account_id
 
 
 class _ApiKeyTransport(httpx.AsyncBaseTransport):
@@ -107,6 +123,27 @@ class OpenDotaClient:
     async def get_records(self, field: str) -> list[RecordEntry]:
         """Top all-time performances in a record stat (see `RECORD_FIELDS`)."""
         return await self._get(f"/records/{field}", _records, ttl=HERO_WIDE_TTL)
+
+    async def search_players(self, name: str) -> list[SearchResult]:
+        """Players whose Persona name contains `name`. Fewer than 3 characters finds nothing."""
+        return await self._get("/search", SEARCH, ttl=PLAYER_TTL, params={"q": name})
+
+    async def get_player(self, account_id: int) -> PlayerResponse:
+        """Profile and Rank tier. Raises `PlayerNotFoundError` for an unknown Account ID."""
+        try:
+            return await self._get(f"/players/{account_id}", PLAYER, ttl=PLAYER_TTL)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != httpx.codes.NOT_FOUND:
+                raise
+            raise PlayerNotFoundError(account_id) from None
+
+    async def get_player_win_loss(self, account_id: int) -> WinLoss:
+        """Wins and losses over all the Player's games."""
+        return await self._get(f"/players/{account_id}/wl", WIN_LOSS, ttl=PLAYER_TTL)
+
+    async def get_player_heroes(self, account_id: int) -> list[PlayerHeroEntry]:
+        """Games and wins on each hero the Player has played."""
+        return await self._get(f"/players/{account_id}/heroes", PLAYER_HEROES, ttl=PLAYER_TTL)
 
     # Constants are not response-cached: the reference store keeps them and decides when
     # to refresh, and the items payload alone would crowd the cache.

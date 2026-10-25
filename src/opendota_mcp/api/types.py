@@ -130,3 +130,49 @@ AGHS_DESC = TypeAdapter(list[AghsDescConstant])
 HERO_LORE = TypeAdapter(dict[str, str])
 """Hero internal name (e.g. `antimage`) → lore."""
 PATCHES = TypeAdapter(list[PatchConstant])
+
+
+class PlayerProfile(BaseModel):
+    account_id: int
+    personaname: str | None = None
+    avatarfull: str | None = None
+
+
+class PlayerResponse(BaseModel):
+    """`/players/{account_id}`."""
+
+    profile: PlayerProfile
+    rank_tier: int | None = None
+    """Medal and stars as two digits, e.g. 74 = Divine 4; null when uncalibrated."""
+    leaderboard_rank: int | None = None
+    """Set for Immortal players on the leaderboard."""
+
+
+class WinLoss(BaseModel):
+    """`/players/{account_id}/wl`."""
+
+    win: int
+    lose: int
+
+
+class PlayerHeroEntry(BaseModel):
+    """One entry of `/players/{account_id}/heroes`."""
+
+    hero_id: int
+    games: int
+    win: int
+
+
+class SearchResult(BaseModel):
+    """One entry of `/search`: up to 50, most similar name first, then most recently active."""
+
+    account_id: int
+    personaname: str | None = None
+    avatarfull: str | None = None
+    last_match_time: datetime | None = None
+
+
+PLAYER = TypeAdapter(PlayerResponse)
+WIN_LOSS = TypeAdapter(WinLoss)
+PLAYER_HEROES = TypeAdapter(list[PlayerHeroEntry])
+SEARCH = TypeAdapter(list[SearchResult])

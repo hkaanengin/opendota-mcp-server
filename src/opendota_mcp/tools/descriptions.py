@@ -8,3 +8,8 @@ ITEM = (
     'The item: its name ("Black King Bar"), a community nickname ("bkb", "aghs shard"), '
     "its OpenDota item ID, or a close spelling."
 )
+PLAYER = (
+    "The player: their Account ID (the Friend ID shown in the Dota client), a player alias "
+    "configured on this server, or their exact current Steam display name. Prefer the ID "
+    "once known; an ambiguous name fails with candidates to choose from."
+)

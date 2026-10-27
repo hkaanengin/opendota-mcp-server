@@ -51,3 +51,61 @@ class PlayerWinLossResult(BaseModel):
     losses: int
     win_rate: float | None = Field(description="Percent of games won; null with no games.")
     filters: FilterDisclosure
+
+
+class PlayerHeroesResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    heroes: list[PlayerHero] = Field(description="Most-played first.")
+    filters: FilterDisclosure
+
+
+class PlayerPeer(BaseModel):
+    persona_name: str | None = Field(description="Their current display name.")
+    account_id: int
+    games: int = Field(description="Matches played together on the same team.")
+    wins: int = Field(description="Of those, how many were won.")
+    win_rate: float | None = Field(description="Percent of games together won.")
+    last_played_date: date | None = Field(description="UTC date of their latest match together.")
+
+
+class PlayerPeersResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    peers: list[PlayerPeer] = Field(description="Most games together first.")
+    filters: FilterDisclosure
+
+
+class PlayerTotal(BaseModel):
+    field: str = Field(description="OpenDota's name for the stat, e.g. gold_per_min.")
+    stat: str = Field(description="The stat in plain words.")
+    games: int = Field(
+        description="Games that record this stat; some are only known for Parsed matches."
+    )
+    total: int | float = Field(description="The stat summed over those games.")
+    average: float | None = Field(description="Per game, to two decimals; null with no games.")
+    average_mmss: str | None = Field(description="The average as MM:SS when the stat is duration.")
+
+
+class PlayerTotalsResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    totals: list[PlayerTotal]
+    filters: FilterDisclosure
+
+
+class HistogramBucket(BaseModel):
+    low: int | float = Field(description="Games with the stat at least this...")
+    high: int | float = Field(description="...and below this.")
+    games: int
+    wins: int
+    win_rate: float | None = Field(description="Percent of games won; null with no games.")
+    range_mmss: str | None = Field(description='The range as "MM:SS-MM:SS" for duration.')
+
+
+class PlayerHistogramResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    field: str = Field(description="OpenDota's name for the stat, e.g. gold_per_min.")
+    stat: str = Field(description="The stat in plain words.")
+    games: int = Field(description="Games counted across all buckets.")
+    buckets: list[HistogramBucket] = Field(
+        description="Equal-width ranges, low to high. Empty ranges at either end are left out."
+    )
+    filters: FilterDisclosure

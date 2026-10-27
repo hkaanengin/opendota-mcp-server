@@ -23,18 +23,24 @@ from opendota_mcp.api.types import (
     AGHS_DESC,
     HERO_LORE,
     HEROES,
+    HISTOGRAM,
     ITEMS,
     PATCHES,
     PLAYER,
     PLAYER_HEROES,
+    PLAYER_PEERS,
+    PLAYER_TOTALS,
     SEARCH,
     WIN_LOSS,
     AghsDescConstant,
     HeroConstant,
+    HistogramEntry,
     ItemConstant,
     PatchConstant,
     PlayerHeroEntry,
+    PlayerPeerEntry,
     PlayerResponse,
+    PlayerTotalEntry,
     RecordEntry,
     SearchResult,
     WinLoss,
@@ -144,9 +150,37 @@ class OpenDotaClient:
             f"/players/{account_id}/wl", WIN_LOSS, ttl=PLAYER_TTL, params=filters
         )
 
-    async def get_player_heroes(self, account_id: int) -> list[PlayerHeroEntry]:
-        """Games and wins on each hero the Player has played."""
-        return await self._get(f"/players/{account_id}/heroes", PLAYER_HEROES, ttl=PLAYER_TTL)
+    async def get_player_heroes(
+        self, account_id: int, filters: Params | None = None
+    ) -> list[PlayerHeroEntry]:
+        """Games and wins on every hero, including heroes never played (0 games)."""
+        return await self._get(
+            f"/players/{account_id}/heroes", PLAYER_HEROES, ttl=PLAYER_TTL, params=filters
+        )
+
+    async def get_player_peers(
+        self, account_id: int, filters: Params | None = None
+    ) -> list[PlayerPeerEntry]:
+        """Players who shared the Player's matches, on either team."""
+        return await self._get(
+            f"/players/{account_id}/peers", PLAYER_PEERS, ttl=PLAYER_TTL, params=filters
+        )
+
+    async def get_player_totals(
+        self, account_id: int, filters: Params | None = None
+    ) -> list[PlayerTotalEntry]:
+        """Each stat in `PLAYER_STAT_FIELDS` summed over the Player's games."""
+        return await self._get(
+            f"/players/{account_id}/totals", PLAYER_TOTALS, ttl=PLAYER_TTL, params=filters
+        )
+
+    async def get_player_histogram(
+        self, account_id: int, field: str, filters: Params | None = None
+    ) -> list[HistogramEntry]:
+        """How a stat in `PLAYER_STAT_FIELDS` is spread over the Player's games, low to high."""
+        return await self._get(
+            f"/players/{account_id}/histograms/{field}", HISTOGRAM, ttl=PLAYER_TTL, params=filters
+        )
 
     # Constants are not response-cached: the reference store keeps them and decides when
     # to refresh, and the items payload alone would crowd the cache.

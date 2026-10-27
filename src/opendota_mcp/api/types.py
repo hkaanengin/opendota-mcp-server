@@ -20,6 +20,40 @@ RECORD_FIELDS = (
 )
 """Stats `/records/{field}` has data for. Any other field silently returns `[]`."""
 
+PLAYER_STAT_FIELDS = (
+    "kills",
+    "deaths",
+    "assists",
+    "kda",
+    "gold_per_min",
+    "xp_per_min",
+    "last_hits",
+    "denies",
+    "lane_efficiency_pct",
+    "duration",
+    "level",
+    "hero_damage",
+    "tower_damage",
+    "hero_healing",
+    "stuns",
+    "tower_kills",
+    "neutral_kills",
+    "courier_kills",
+    "purchase_tpscroll",
+    "purchase_ward_observer",
+    "purchase_ward_sentry",
+    "purchase_gem",
+    "purchase_rapier",
+    "pings",
+    "throw",
+    "comeback",
+    "stomp",
+    "loss",
+    "actions_per_min",
+)
+"""Stats `/players/{id}/totals` reports and `/players/{id}/histograms/{field}` has data for.
+Any other histogram field silently returns `[]`."""
+
 
 class RecordEntry(BaseModel):
     match_id: int
@@ -163,6 +197,36 @@ class PlayerHeroEntry(BaseModel):
     win: int
 
 
+class PlayerPeerEntry(BaseModel):
+    """One entry of `/players/{account_id}/peers`: someone who shared matches with the Player.
+
+    `games`/`win` count every shared match; `with_*` only those on the same team.
+    """
+
+    account_id: int
+    personaname: str | None = None
+    last_played: int | None = None
+    with_games: int
+    with_win: int
+
+
+class PlayerTotalEntry(BaseModel):
+    """One entry of `/players/{account_id}/totals`: a stat summed over `n` games that record it."""
+
+    field: str
+    n: int
+    sum: int | float
+
+
+class HistogramEntry(BaseModel):
+    """One entry of `/players/{account_id}/histograms/{field}`: games whose stat is at least `x`,
+    below the next bucket's `x`. Buckets are equally wide."""
+
+    x: int | float
+    games: int
+    win: int
+
+
 class SearchResult(BaseModel):
     """One entry of `/search`: up to 50, most similar name first, then most recently active."""
 
@@ -175,4 +239,7 @@ class SearchResult(BaseModel):
 PLAYER = TypeAdapter(PlayerResponse)
 WIN_LOSS = TypeAdapter(WinLoss)
 PLAYER_HEROES = TypeAdapter(list[PlayerHeroEntry])
+PLAYER_PEERS = TypeAdapter(list[PlayerPeerEntry])
+PLAYER_TOTALS = TypeAdapter(list[PlayerTotalEntry])
+HISTOGRAM = TypeAdapter(list[HistogramEntry])
 SEARCH = TypeAdapter(list[SearchResult])

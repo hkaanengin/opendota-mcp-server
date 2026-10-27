@@ -1,0 +1,147 @@
+[
+    {
+        "field": "kills",
+        "n": 1300,
+        "sum": 11235
+    },
+    {
+        "field": "deaths",
+        "n": 1300,
+        "sum": 9733
+    },
+    {
+        "field": "assists",
+        "n": 1300,
+        "sum": 17576
+    },
+    {
+        "field": "kda",
+        "n": 1300,
+        "sum": 4085.04
+    },
+    {
+        "field": "gold_per_min",
+        "n": 1300,
+        "sum": 631018
+    },
+    {
+        "field": "xp_per_min",
+        "n": 1300,
+        "sum": 726505
+    },
+    {
+        "field": "last_hits",
+        "n": 1300,
+        "sum": 268459
+    },
+    {
+        "field": "denies",
+        "n": 1300,
+        "sum": 12023
+    },
+    {
+        "field": "lane_efficiency_pct",
+        "n": 108,
+        "sum": 6081
+    },
+    {
+        "field": "duration",
+        "n": 1300,
+        "sum": 3230004
+    },
+    {
+        "field": "level",
+        "n": 1300,
+        "sum": 27746
+    },
+    {
+        "field": "hero_damage",
+        "n": 1232,
+        "sum": 29130507
+    },
+    {
+        "field": "tower_damage",
+        "n": 1232,
+        "sum": 4806140
+    },
+    {
+        "field": "hero_healing",
+        "n": 1232,
+        "sum": 691676
+    },
+    {
+        "field": "stuns",
+        "n": 108,
+        "sum": 2983.883087259999
+    },
+    {
+        "field": "tower_kills",
+        "n": 108,
+        "sum": 175
+    },
+    {
+        "field": "neutral_kills",
+        "n": 108,
+        "sum": 8818
+    },
+    {
+        "field": "courier_kills",
+        "n": 108,
+        "sum": 5
+    },
+    {
+        "field": "purchase_tpscroll",
+        "n": 108,
+        "sum": 870
+    },
+    {
+        "field": "purchase_ward_observer",
+        "n": 24,
+        "sum": 127
+    },
+    {
+        "field": "purchase_ward_sentry",
+        "n": 16,
+        "sum": 69
+    },
+    {
+        "field": "purchase_gem",
+        "n": 4,
+        "sum": 4
+    },
+    {
+        "field": "purchase_rapier",
+        "n": 0,
+        "sum": 0
+    },
+    {
+        "field": "pings",
+        "n": 107,
+        "sum": 1760
+    },
+    {
+        "field": "throw",
+        "n": 48,
+        "sum": 133604
+    },
+    {
+        "field": "comeback",
+        "n": 59,
+        "sum": 115207
+    },
+    {
+        "field": "stomp",
+        "n": 59,
+        "sum": 1450583
+    },
+    {
+        "field": "loss",
+        "n": 48,
+        "sum": 1092387
+    },
+    {
+        "field": "actions_per_min",
+        "n": 108,
+        "sum": 18825
+    }
+]

@@ -10,14 +10,20 @@ long as their kind of data stays fresh. Cache hits skip the limiter entirely.
 
 import logging
 import math
-from collections.abc import Hashable, Mapping
+from collections.abc import Callable, Hashable, Mapping
 from typing import Any, TypeVar
 
 import httpx
 from fastmcp.exceptions import ToolError
 from pydantic import SecretStr, TypeAdapter, ValidationError
 
-from opendota_mcp.api.cache import HERO_WIDE_TTL, PLAYER_TTL, ResponseCache
+from opendota_mcp.api.cache import (
+    HERO_WIDE_TTL,
+    PARSED_MATCH_TTL,
+    PLAYER_TTL,
+    UNPARSED_MATCH_TTL,
+    ResponseCache,
+)
 from opendota_mcp.api.ratelimit import RateLimiter, seconds_until_next_window
 from opendota_mcp.api.types import (
     AGHS_DESC,
@@ -25,6 +31,7 @@ from opendota_mcp.api.types import (
     HEROES,
     HISTOGRAM,
     ITEMS,
+    MATCH,
     PATCHES,
     PLAYER,
     PLAYER_COUNTS,
@@ -40,6 +47,7 @@ from opendota_mcp.api.types import (
     HeroConstant,
     HistogramEntry,
     ItemConstant,
+    MatchResponse,
     PatchConstant,
     PlayerCounts,
     PlayerHeroEntry,
@@ -91,6 +99,14 @@ class PlayerNotFoundError(Exception):
     def __init__(self, account_id: int) -> None:
         super().__init__(f"no player with account ID {account_id}")
         self.account_id = account_id
+
+
+class MatchNotFoundError(Exception):
+    """OpenDota has no Match with this ID."""
+
+    def __init__(self, match_id: int) -> None:
+        super().__init__(f"no match with ID {match_id}")
+        self.match_id = match_id
 
 
 class _ApiKeyTransport(httpx.AsyncBaseTransport):
@@ -210,6 +226,19 @@ class OpenDotaClient:
         """Each change of the Player's Rank tier that OpenDota recorded."""
         return await self._get(f"/players/{account_id}/ratings", RATINGS, ttl=PLAYER_TTL)
 
+    async def get_match(self, match_id: int) -> MatchResponse:
+        """A finished Match. Raises `MatchNotFoundError` for an unknown match ID.
+
+        A Parsed match never changes, so it stays cached; an unparsed one may be parsed at
+        any time, so it's kept only briefly.
+        """
+        try:
+            return await self._get(f"/matches/{match_id}", MATCH, ttl=_match_ttl)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != httpx.codes.NOT_FOUND:
+                raise
+            raise MatchNotFoundError(match_id) from None
+
     # Constants are not response-cached: the reference store keeps them and decides when
     # to refresh, and the items payload alone would crowd the cache.
 
@@ -242,17 +271,21 @@ class OpenDotaClient:
         path: str,
         adapter: TypeAdapter[T],
         *,
-        ttl: float | None,
+        ttl: float | Callable[[T], float | None] | None,
         params: Params | None = None,
     ) -> T:
-        """Fetch, validate and cache a GET response. Only valid responses are cached."""
+        """Fetch, validate and cache a GET response. Only valid responses are cached.
+
+        `ttl` is seconds to keep it (`None`: until evicted), or a function of the response
+        when how long it stays fresh depends on what came back.
+        """
         key: Hashable = ("GET", path, tuple(sorted((params or {}).items())))
         cached = self._cache.get(key, _MISSING)
         if cached is not _MISSING:
             logger.debug("GET %s (cached)", path)
             return cached  # type: ignore[no-any-return]
         value = await self._fetch(path, adapter, params)
-        self._cache.put(key, value, ttl)
+        self._cache.put(key, value, ttl(value) if callable(ttl) else ttl)
         return value
 
     async def _fetch(self, path: str, adapter: TypeAdapter[T], params: Params | None = None) -> T:
@@ -300,6 +333,10 @@ class OpenDotaClient:
                 transport = _ApiKeyTransport(transport or httpx.AsyncHTTPTransport(), self._api_key)
             self._http = httpx.AsyncClient(base_url=BASE_URL, transport=transport, timeout=TIMEOUT)
         return self._http
+
+
+def _match_ttl(match: MatchResponse) -> float | None:
+    return PARSED_MATCH_TTL if match.parsed else UNPARSED_MATCH_TTL
 
 
 def _retry_after(response: httpx.Response, now: float) -> float:

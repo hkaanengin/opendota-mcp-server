@@ -42,9 +42,10 @@ def stat_name(field: str) -> str:
 
 
 def mmss(seconds: int | float) -> str:
-    """Game time as `MM:SS`, minutes unbounded (e.g. 4325 → "72:05")."""
-    minutes, secs = divmod(int(seconds), 60)
-    return f"{minutes:02d}:{secs:02d}"
+    """Game time as `MM:SS`, minutes unbounded (e.g. 4325 → "72:05"; -19 → "-00:19")."""
+    sign = "-" if seconds < 0 else ""
+    minutes, secs = divmod(abs(int(seconds)), 60)
+    return f"{sign}{minutes:02d}:{secs:02d}"
 
 
 def win_rate(wins: int, games: int) -> float | None:

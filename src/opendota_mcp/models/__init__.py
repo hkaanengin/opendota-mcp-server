@@ -9,6 +9,23 @@ from opendota_mcp.models.heroes import (
     PrimaryAttribute,
 )
 from opendota_mcp.models.items import ItemAbility, ItemResult
+from opendota_mcp.models.matches import (
+    AdvantagePoint,
+    ChatMessage,
+    ItemTiming,
+    MatchChat,
+    MatchDraft,
+    MatchEvent,
+    MatchPlayer,
+    MatchResult,
+    MatchSection,
+    MatchSectionResult,
+    PlayerTimings,
+    Side,
+    Teamfight,
+    TeamfightParticipant,
+    TimingCheckpoint,
+)
 from opendota_mcp.models.players import (
     BreakdownRow,
     FindPlayerResult,
@@ -33,8 +50,10 @@ from opendota_mcp.models.players import (
 from opendota_mcp.models.records import Record, RecordsResult
 
 __all__ = [
+    "AdvantagePoint",
     "AghanimsUpgrade",
     "BreakdownRow",
+    "ChatMessage",
     "FilterDisclosure",
     "FindPlayerResult",
     "HeroAttributes",
@@ -43,6 +62,14 @@ __all__ = [
     "HistogramBucket",
     "ItemAbility",
     "ItemResult",
+    "ItemTiming",
+    "MatchChat",
+    "MatchDraft",
+    "MatchEvent",
+    "MatchPlayer",
+    "MatchResult",
+    "MatchSection",
+    "MatchSectionResult",
     "PlayerBreakdownResult",
     "PlayerCandidate",
     "PlayerHero",
@@ -54,6 +81,7 @@ __all__ = [
     "PlayerPeersResult",
     "PlayerProfileResult",
     "PlayerRankHistoryResult",
+    "PlayerTimings",
     "PlayerTotal",
     "PlayerTotalsResult",
     "PlayerWinLossResult",
@@ -62,4 +90,8 @@ __all__ = [
     "Record",
     "RecordsResult",
     "ResolvedPlayer",
+    "Side",
+    "Teamfight",
+    "TeamfightParticipant",
+    "TimingCheckpoint",
 ]

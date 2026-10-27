@@ -307,3 +307,139 @@ PLAYER_COUNTS = TypeAdapter(PlayerCounts)
 PLAYER_MATCHES = TypeAdapter(list[PlayerMatchEntry])
 RATINGS = TypeAdapter(list[RatingEntry])
 SEARCH = TypeAdapter(list[SearchResult])
+
+
+class PickBan(BaseModel):
+    is_pick: bool
+    hero_id: int
+    team: int
+    """0 is Radiant, 1 is Dire."""
+    order: int
+
+
+class PurchaseEntry(BaseModel):
+    time: int
+    """Seconds from the horn; negative before it."""
+    key: str
+    """Internal item name."""
+
+
+class MatchPlayerEntry(BaseModel):
+    """One player of `/matches/{match_id}`. The `*_t` and purchase fields are parsed-only."""
+
+    player_slot: int
+    """Below 128 is Radiant."""
+    account_id: int | None = None
+    """Null for an anonymous player."""
+    personaname: str | None = None
+    hero_id: int
+    kills: int
+    deaths: int
+    assists: int
+    net_worth: int | None = None
+    level: int | None = None
+    gold_per_min: int | None = None
+    xp_per_min: int | None = None
+    last_hits: int | None = None
+    denies: int | None = None
+    item_0: int = 0
+    item_1: int = 0
+    item_2: int = 0
+    item_3: int = 0
+    item_4: int = 0
+    item_5: int = 0
+    """Inventory item IDs; 0 is an empty slot."""
+    backpack_0: int | None = 0
+    backpack_1: int | None = 0
+    backpack_2: int | None = 0
+    item_neutral: int | None = 0
+    gold_t: list[int] | None = None
+    """Total gold earned by each minute."""
+    xp_t: list[int] | None = None
+    lh_t: list[int] | None = None
+    dn_t: list[int] | None = None
+    purchase_log: list[PurchaseEntry] | None = None
+
+
+class ObjectiveEntry(BaseModel):
+    """One entry of a match's `objectives`: first blood, buildings, Roshan, couriers, ..."""
+
+    time: int
+    type: str
+    """e.g. `building_kill`, `CHAT_MESSAGE_ROSHAN_KILL`."""
+    player_slot: int | None = None
+    """The player credited, when there is one."""
+    team: int | None = None
+    """2 is Radiant, 3 is Dire: who killed Roshan or a Tormentor, or whose courier was lost."""
+    key: str | int | None = None
+    """For `building_kill`, the building, e.g. `npc_dota_goodguys_tower1_bot`."""
+    unit: str | None = None
+    """For `building_kill`, what destroyed it, e.g. `npc_dota_hero_jakiro`."""
+    killer: int | None = None
+    """For a courier kill, the killer's player slot; -1 when no player."""
+
+
+class TeamfightPlayerEntry(BaseModel):
+    deaths: int = 0
+    buybacks: int = 0
+    damage: int = 0
+    healing: int = 0
+    gold_delta: int = 0
+    xp_delta: int = 0
+    killed: dict[str, int] = {}
+    """Unit (e.g. `npc_dota_hero_tusk`) → kills."""
+
+
+class TeamfightEntry(BaseModel):
+    start: int
+    end: int
+    deaths: int
+    players: list[TeamfightPlayerEntry]
+    """In player order: Radiant's five, then Dire's."""
+
+
+class ChatEntry(BaseModel):
+    time: int
+    type: str
+    """`chat` for typed text, `chatwheel` for a chat wheel line."""
+    key: str | int
+    """The text typed, or the chat wheel line's ID."""
+    player_slot: int | None = None
+
+
+class OdData(BaseModel):
+    has_parsed: bool = False
+
+
+class MatchResponse(BaseModel):
+    """`/matches/{match_id}`. Teamfights, objectives, chat and graphs need a Parsed match."""
+
+    match_id: int
+    radiant_win: bool | None = None
+    duration: int
+    start_time: int
+    game_mode: int
+    lobby_type: int
+    patch: int | None = None
+    region: int | None = None
+    radiant_score: int | None = None
+    dire_score: int | None = None
+    picks_bans: list[PickBan] | None = None
+    players: list[MatchPlayerEntry]
+    objectives: list[ObjectiveEntry] | None = None
+    teamfights: list[TeamfightEntry] | None = None
+    chat: list[ChatEntry] | None = None
+    radiant_gold_adv: list[int] | None = None
+    radiant_xp_adv: list[int] | None = None
+    version: int | None = None
+    """OpenDota's parser version; set only once the replay is parsed."""
+    od_data: OdData | None = None
+
+    @property
+    def parsed(self) -> bool:
+        if self.od_data is not None:
+            return self.od_data.has_parsed
+        return self.version is not None
+
+
+MATCH = TypeAdapter(MatchResponse)

@@ -47,6 +47,7 @@ from opendota_mcp.models.formatting import (
     win_rate,
 )
 from opendota_mcp.models.labels import game_mode_name, lobby_type_name, region_name
+from opendota_mcp.objectives import side_of_slot
 from opendota_mcp.reference import Reference, ReferenceStore
 from opendota_mcp.resolve import (
     LANE_NAMES,
@@ -65,8 +66,6 @@ from opendota_mcp.tools.descriptions import FILTERS, PLAYER
 TOP_HEROES = 10
 DEFAULT_MATCHES = 20
 UNPARSED_LANE = "unknown (match not parsed)"
-RADIANT_SLOTS = 128
-"""Player slots below this are on Radiant."""
 MIN_GAMES = (
     "Leave out rows with fewer games than this (default 1). Applied after the filters, "
     "e.g. 10 to skip one-off games."
@@ -364,7 +363,7 @@ def _rows(counts: Mapping[int, CountEntry], name: Callable[[int], str]) -> list[
 def _match(match: PlayerMatchEntry, reference: Reference) -> PlayerMatch:
     result = None
     if match.radiant_win is not None:
-        radiant = match.player_slot < RADIANT_SLOTS
+        radiant = side_of_slot(match.player_slot) == "Radiant"
         result = "win" if radiant == match.radiant_win else "loss"
     return PlayerMatch(
         match_id=match.match_id,

@@ -41,6 +41,8 @@ class Reference:
     hero_lore: Mapping[str, str]
     """Hero internal name → lore."""
     patches: Sequence[PatchConstant]
+    item_keys: Mapping[int, str]
+    """Item ID → internal item name, derived from `items`."""
 
     @classmethod
     def bundled(cls) -> Self:
@@ -55,7 +57,7 @@ class Reference:
 
     @classmethod
     def empty(cls) -> Self:
-        return cls(heroes={}, items={}, aghs={}, hero_lore={}, patches=())
+        return cls(heroes={}, items={}, aghs={}, hero_lore={}, patches=(), item_keys={})
 
     def with_parts(self, **parts: Any) -> Self:
         """A copy with some resources replaced, each given as its `/constants/*` payload."""
@@ -64,6 +66,7 @@ class Reference:
             changes["heroes"] = {hero.id: hero for hero in parts.pop("heroes").values()}
         if "items" in parts:
             changes["items"] = dict(parts.pop("items"))
+            changes["item_keys"] = {item.id: key for key, item in changes["items"].items()}
         if "aghs_desc" in parts:
             changes["aghs"] = {entry.hero_id: entry for entry in parts.pop("aghs_desc")}
         if "hero_lore" in parts:
@@ -79,6 +82,12 @@ class Reference:
         hero = self.heroes.get(hero_id)
         return hero.localized_name if hero else f"Unknown hero (id {hero_id})"
 
+    def hero_name_for_unit(self, unit: str) -> str | None:
+        """Display name for a hero unit, e.g. `npc_dota_hero_jakiro` → "Jakiro"; else `None`."""
+        return next(
+            (hero.localized_name for hero in self.heroes.values() if hero.name == unit), None
+        )
+
     def patch_name(self, patch_id: int) -> str:
         """Version for a patch index, e.g. 58 → "7.39". Unknown indexes get a placeholder."""
         patch = next((patch for patch in self.patches if patch.id == patch_id), None)
@@ -88,3 +97,8 @@ class Reference:
         """Display name, e.g. `black_king_bar` → "Black King Bar"; the key itself if unknown."""
         item = self.items.get(internal_name)
         return item.dname if item and item.dname else internal_name
+
+    def item_name_by_id(self, item_id: int) -> str:
+        """Display name, e.g. 116 → "Black King Bar". Unknown IDs get a readable placeholder."""
+        key = self.item_keys.get(item_id)
+        return self.item_name(key) if key else f"Unknown item (id {item_id})"

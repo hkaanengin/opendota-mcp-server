@@ -27,9 +27,13 @@ from opendota_mcp.api.types import (
     ITEMS,
     PATCHES,
     PLAYER,
+    PLAYER_COUNTS,
     PLAYER_HEROES,
+    PLAYER_MATCH_COLUMNS,
+    PLAYER_MATCHES,
     PLAYER_PEERS,
     PLAYER_TOTALS,
+    RATINGS,
     SEARCH,
     WIN_LOSS,
     AghsDescConstant,
@@ -37,10 +41,13 @@ from opendota_mcp.api.types import (
     HistogramEntry,
     ItemConstant,
     PatchConstant,
+    PlayerCounts,
     PlayerHeroEntry,
+    PlayerMatchEntry,
     PlayerPeerEntry,
     PlayerResponse,
     PlayerTotalEntry,
+    RatingEntry,
     RecordEntry,
     SearchResult,
     WinLoss,
@@ -55,7 +62,7 @@ MAX_RETRY_WAIT = 60.0
 """Longest `Retry-After` worth waiting out inside a tool call; beyond it, fail at once."""
 
 T = TypeVar("T")
-Params = Mapping[str, str | int | tuple[int, ...]]
+Params = Mapping[str, str | int | tuple[int, ...] | tuple[str, ...]]
 """OpenDota query parameters; a tuple repeats the key. Part of the cache key, so filtered
 queries never collide."""
 
@@ -181,6 +188,27 @@ class OpenDotaClient:
         return await self._get(
             f"/players/{account_id}/histograms/{field}", HISTOGRAM, ttl=PLAYER_TTL, params=filters
         )
+
+    async def get_player_counts(
+        self, account_id: int, filters: Params | None = None
+    ) -> PlayerCounts:
+        """Games and wins by game mode, lobby type, lane, region and patch."""
+        return await self._get(
+            f"/players/{account_id}/counts", PLAYER_COUNTS, ttl=PLAYER_TTL, params=filters
+        )
+
+    async def get_player_matches(
+        self, account_id: int, filters: Params | None = None
+    ) -> list[PlayerMatchEntry]:
+        """The Player's matches, newest first. Without a `limit` filter, their whole history."""
+        params = {**(filters or {}), "project": PLAYER_MATCH_COLUMNS}
+        return await self._get(
+            f"/players/{account_id}/matches", PLAYER_MATCHES, ttl=PLAYER_TTL, params=params
+        )
+
+    async def get_player_ratings(self, account_id: int) -> list[RatingEntry]:
+        """Each change of the Player's Rank tier that OpenDota recorded."""
+        return await self._get(f"/players/{account_id}/ratings", RATINGS, ttl=PLAYER_TTL)
 
     # Constants are not response-cached: the reference store keeps them and decides when
     # to refresh, and the items payload alone would crowd the cache.

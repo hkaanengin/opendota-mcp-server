@@ -79,6 +79,11 @@ class Reference:
         hero = self.heroes.get(hero_id)
         return hero.localized_name if hero else f"Unknown hero (id {hero_id})"
 
+    def patch_name(self, patch_id: int) -> str:
+        """Version for a patch index, e.g. 58 → "7.39". Unknown indexes get a placeholder."""
+        patch = next((patch for patch in self.patches if patch.id == patch_id), None)
+        return patch.name if patch else f"Unknown patch (index {patch_id})"
+
     def item_name(self, internal_name: str) -> str:
         """Display name, e.g. `black_king_bar` → "Black King Bar"; the key itself if unknown."""
         item = self.items.get(internal_name)

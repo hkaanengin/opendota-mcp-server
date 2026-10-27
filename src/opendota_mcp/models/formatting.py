@@ -55,3 +55,8 @@ def win_rate(wins: int, games: int) -> float | None:
 def utc_date(epoch: int) -> date:
     """The UTC calendar date of an OpenDota epoch-seconds timestamp."""
     return datetime.fromtimestamp(epoch, tz=UTC).date()
+
+
+def utc_datetime(epoch: int) -> datetime:
+    """An OpenDota epoch-seconds timestamp as a UTC datetime."""
+    return datetime.fromtimestamp(epoch, tz=UTC)

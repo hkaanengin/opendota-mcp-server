@@ -227,6 +227,67 @@ class HistogramEntry(BaseModel):
     win: int
 
 
+class CountEntry(BaseModel):
+    games: int
+    win: int
+
+
+class PlayerCounts(BaseModel):
+    """`/players/{account_id}/counts`: games and wins per ID in each category.
+
+    `lane_role` 0 is a match whose lane isn't known (not Parsed). `patch` is the patch index.
+    """
+
+    game_mode: dict[int, CountEntry]
+    lobby_type: dict[int, CountEntry]
+    lane_role: dict[int, CountEntry]
+    region: dict[int, CountEntry]
+    patch: dict[int, CountEntry]
+
+
+PLAYER_MATCH_COLUMNS = (
+    "hero_id",
+    "start_time",
+    "kills",
+    "deaths",
+    "assists",
+    "gold_per_min",
+    "xp_per_min",
+)
+"""Columns `/players/{id}/matches` is asked to `project`. Projecting replaces its default
+columns, so every column `PlayerMatchEntry` reads beyond the always-sent ones is listed."""
+
+
+class PlayerMatchEntry(BaseModel):
+    """One entry of `/players/{account_id}/matches`, newest first."""
+
+    match_id: int
+    player_slot: int
+    """Below 128 is Radiant."""
+    radiant_win: bool | None = None
+    """Null for a match with no result, such as one abandoned early."""
+    duration: int
+    game_mode: int
+    lobby_type: int
+    hero_id: int
+    start_time: int
+    kills: int
+    deaths: int
+    assists: int
+    gold_per_min: int | None = None
+    xp_per_min: int | None = None
+
+
+class RatingEntry(BaseModel):
+    """One entry of `/players/{account_id}/ratings`: the Rank tier a Player moved to, and when.
+
+    Sent with only `time` and `rank_tier`, despite OpenDota documenting more fields.
+    """
+
+    time: datetime
+    rank_tier: int | None = None
+
+
 class SearchResult(BaseModel):
     """One entry of `/search`: up to 50, most similar name first, then most recently active."""
 
@@ -242,4 +303,7 @@ PLAYER_HEROES = TypeAdapter(list[PlayerHeroEntry])
 PLAYER_PEERS = TypeAdapter(list[PlayerPeerEntry])
 PLAYER_TOTALS = TypeAdapter(list[PlayerTotalEntry])
 HISTOGRAM = TypeAdapter(list[HistogramEntry])
+PLAYER_COUNTS = TypeAdapter(PlayerCounts)
+PLAYER_MATCHES = TypeAdapter(list[PlayerMatchEntry])
+RATINGS = TypeAdapter(list[RatingEntry])
 SEARCH = TypeAdapter(list[SearchResult])

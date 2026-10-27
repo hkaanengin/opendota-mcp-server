@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -8,8 +8,10 @@ from pydantic import Field
 from opendota_mcp.api import OpenDotaClient, PlayerNotFoundError
 from opendota_mcp.api.types import (
     PLAYER_STAT_FIELDS,
+    CountEntry,
     HistogramEntry,
     PlayerHeroEntry,
+    PlayerMatchEntry,
     PlayerPeerEntry,
     PlayerResponse,
     PlayerTotalEntry,
@@ -17,23 +19,37 @@ from opendota_mcp.api.types import (
 )
 from opendota_mcp.clock import Clock
 from opendota_mcp.models import (
+    BreakdownRow,
     FindPlayerResult,
     HistogramBucket,
+    PlayerBreakdownResult,
     PlayerCandidate,
     PlayerHero,
     PlayerHeroesResult,
     PlayerHistogramResult,
+    PlayerMatch,
+    PlayerMatchesResult,
     PlayerPeer,
     PlayerPeersResult,
     PlayerProfileResult,
+    PlayerRankHistoryResult,
     PlayerTotal,
     PlayerTotalsResult,
     PlayerWinLossResult,
+    RankChange,
     ResolvedPlayer,
 )
-from opendota_mcp.models.formatting import mmss, stat_name, utc_date, win_rate
+from opendota_mcp.models.formatting import (
+    mmss,
+    stat_name,
+    utc_date,
+    utc_datetime,
+    win_rate,
+)
+from opendota_mcp.models.labels import game_mode_name, lobby_type_name, region_name
 from opendota_mcp.reference import Reference, ReferenceStore
 from opendota_mcp.resolve import (
+    LANE_NAMES,
     MAX_CANDIDATES,
     PlayerFilters,
     ResolvedFilters,
@@ -47,6 +63,10 @@ from opendota_mcp.tools.annotations import READ_ONLY
 from opendota_mcp.tools.descriptions import FILTERS, PLAYER
 
 TOP_HEROES = 10
+DEFAULT_MATCHES = 20
+UNPARSED_LANE = "unknown (match not parsed)"
+RADIANT_SLOTS = 128
+"""Player slots below this are on Radiant."""
 MIN_GAMES = (
     "Leave out rows with fewer games than this (default 1). Applied after the filters, "
     "e.g. 10 to skip one-off games."
@@ -241,6 +261,126 @@ def register_player_tools(
             buckets=_buckets(buckets, duration=stat == "duration"),
             filters=applied.disclosure,
         )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_player_breakdown(
+        player: Annotated[str | int, Field(description=PLAYER)],
+        filters: Annotated[PlayerFilters | None, Field(description=FILTERS)] = None,
+    ) -> PlayerBreakdownResult:
+        """A Player's games, wins and win rate split by game mode, lobby type (ranked or not),
+        lane, patch and server region, all in one call.
+
+        Use for "do I do better in mid or safe lane", "my ranked vs unranked win rate", "how
+        did I do each patch", "which region do I play on".
+        """
+        resolved, applied, reference = await resolve_request(player, filters)
+        counts = await api.get_player_counts(resolved.account_id, applied.params)
+        # Known lanes in order, then unparsed games (lane_role 0) last.
+        lanes = [
+            _row(_lane_name(lane), entry)
+            for lane, entry in sorted(counts.lane_role.items(), key=lambda item: item[0] == 0)
+        ]
+        return PlayerBreakdownResult(
+            resolved_player=resolved,
+            game_modes=_rows(counts.game_mode, game_mode_name),
+            lobby_types=_rows(counts.lobby_type, lobby_type_name),
+            lanes=lanes,
+            patches=[
+                _row(reference.patch_name(patch), entry)
+                for patch, entry in sorted(counts.patch.items(), reverse=True)
+            ],
+            regions=_rows(counts.region, region_name),
+            filters=applied.disclosure,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_player_matches(
+        player: Annotated[str | int, Field(description=PLAYER)],
+        filters: Annotated[PlayerFilters | None, Field(description=FILTERS)] = None,
+    ) -> PlayerMatchesResult:
+        """A Player's matches, newest first: hero, result, KDA, GPM, XPM, length and start
+        time. The latest 20 unless `filters.limit` asks for more; page further back with
+        `filters.offset` (the response gives the next one).
+
+        Use for "my last 10 games", "my last 50 ranked Pudge games", "games I played with my
+        friend this week". Pass a match ID to get_match for its details.
+        """
+        resolved, applied, reference = await resolve_request(player, filters)
+        limit = filters.limit if filters and filters.limit else DEFAULT_MATCHES
+        offset = filters.offset if filters and filters.offset else 0
+        matches = await api.get_player_matches(
+            resolved.account_id, {**applied.params, "limit": limit}
+        )
+        return PlayerMatchesResult(
+            resolved_player=resolved,
+            matches=[_match(match, reference) for match in matches],
+            next_offset=offset + limit if len(matches) >= limit else None,
+            filters=applied.disclosure,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_player_rank_history(
+        player: Annotated[str | int, Field(description=PLAYER)],
+    ) -> PlayerRankHistoryResult:
+        """How a Player's rank (medal) has changed over time, oldest first, with their current
+        rank. OpenDota only records changes it saw, so the history can be short or empty.
+
+        Use for "when did I reach Divine", "how has my rank changed", "did I drop a medal".
+        """
+        resolved = await resolve_player(player, api, player_aliases)
+        profile, ratings = await asyncio.gather(
+            api.get_player(resolved.account_id), api.get_player_ratings(resolved.account_id)
+        )
+        return PlayerRankHistoryResult(
+            resolved_player=resolved,
+            current_rank=_rank(profile),
+            changes=[
+                RankChange(time=rating.time, rank=format_rank_tier(rating.rank_tier))
+                for rating in sorted(ratings, key=lambda rating: rating.time)
+            ],
+        )
+
+
+def _lane_name(lane_role: int) -> str:
+    if lane_role == 0:
+        return UNPARSED_LANE
+    return LANE_NAMES.get(lane_role) or f"Unknown lane (id {lane_role})"
+
+
+def _row(label: str, entry: CountEntry) -> BreakdownRow:
+    return BreakdownRow(
+        label=label, games=entry.games, wins=entry.win, win_rate=win_rate(entry.win, entry.games)
+    )
+
+
+def _rows(counts: Mapping[int, CountEntry], name: Callable[[int], str]) -> list[BreakdownRow]:
+    """Labelled rows, most games first."""
+    return [
+        _row(name(key), entry)
+        for key, entry in sorted(counts.items(), key=lambda item: -item[1].games)
+    ]
+
+
+def _match(match: PlayerMatchEntry, reference: Reference) -> PlayerMatch:
+    result = None
+    if match.radiant_win is not None:
+        radiant = match.player_slot < RADIANT_SLOTS
+        result = "win" if radiant == match.radiant_win else "loss"
+    return PlayerMatch(
+        match_id=match.match_id,
+        hero=reference.hero_name(match.hero_id),
+        result=result,
+        kills=match.kills,
+        deaths=match.deaths,
+        assists=match.assists,
+        gold_per_min=match.gold_per_min,
+        xp_per_min=match.xp_per_min,
+        duration=match.duration,
+        duration_mmss=mmss(match.duration),
+        start_time=utc_datetime(match.start_time),
+        game_mode=game_mode_name(match.game_mode),
+        lobby_type=lobby_type_name(match.lobby_type),
+    )
 
 
 def _heroes(heroes: Sequence[PlayerHeroEntry], reference: Reference) -> list[PlayerHero]:

@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -109,3 +110,64 @@ class PlayerHistogramResult(BaseModel):
         description="Equal-width ranges, low to high. Empty ranges at either end are left out."
     )
     filters: FilterDisclosure
+
+
+class BreakdownRow(BaseModel):
+    label: str
+    games: int
+    wins: int
+    win_rate: float | None = Field(description="Percent of games won; null with no games.")
+
+
+class PlayerBreakdownResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    game_modes: list[BreakdownRow] = Field(description="Most games first.")
+    lobby_types: list[BreakdownRow] = Field(
+        description="Ranked, Unranked, Battle Cup and so on. Most games first."
+    )
+    lanes: list[BreakdownRow] = Field(
+        description="Safe, mid, off lane and jungle, then games whose lane isn't known because "
+        "the match wasn't parsed."
+    )
+    patches: list[BreakdownRow] = Field(description="By version, newest first.")
+    regions: list[BreakdownRow] = Field(description="Server regions, most games first.")
+    filters: FilterDisclosure
+
+
+class PlayerMatch(BaseModel):
+    match_id: int
+    hero: str
+    result: Literal["win", "loss"] | None = Field(description="Null for a match with no result.")
+    kills: int
+    deaths: int
+    assists: int
+    gold_per_min: int | None
+    xp_per_min: int | None
+    duration: int = Field(description="Match length in seconds.")
+    duration_mmss: str = Field(description='Match length as "MM:SS".')
+    start_time: datetime = Field(description="When the match started, UTC.")
+    game_mode: str = Field(description='e.g. "All Pick", "Turbo".')
+    lobby_type: str = Field(description='e.g. "Ranked", "Unranked".')
+
+
+class PlayerMatchesResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    matches: list[PlayerMatch] = Field(description="Newest first.")
+    next_offset: int | None = Field(
+        description="Pass as filters.offset (with the same limit) for the next page; null when "
+        "this was the last."
+    )
+    filters: FilterDisclosure
+
+
+class RankChange(BaseModel):
+    time: datetime = Field(description="When OpenDota saw the new rank, UTC.")
+    rank: str = Field(description='The medal reached, e.g. "Divine 4", or "Unranked".')
+
+
+class PlayerRankHistoryResult(BaseModel):
+    resolved_player: ResolvedPlayer
+    current_rank: str = Field(description='Current medal, e.g. "Divine 4", "Immortal #412".')
+    changes: list[RankChange] = Field(
+        description="Each rank change OpenDota recorded, oldest first. Empty when it has none."
+    )

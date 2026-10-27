@@ -1,0 +1,11 @@
+{
+  "id": 418202651,
+  "type": "parse",
+  "timestamp": "2026-10-27T18:00:00.000Z",
+  "attempts": 3,
+  "data": {"match_id": 9032502907, "origin": "api"},
+  "next_attempt_time": null,
+  "priority": 1,
+  "job_key": "9032502907",
+  "jobId": 418202651
+}

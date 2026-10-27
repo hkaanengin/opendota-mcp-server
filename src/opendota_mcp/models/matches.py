@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from opendota_mcp.api.types import ParseState
+
 Side = Literal["Radiant", "Dire"]
 MatchSection = Literal["teamfights", "objectives", "chat", "advantage_graphs", "player_timings"]
 EventType = Literal[
@@ -163,3 +165,23 @@ class MatchSectionResult(BaseModel):
     player_timings: list[PlayerTimings] | None = Field(
         description="Set for the player_timings section, one per player."
     )
+
+
+ParseStatus = ParseState
+
+
+class ParseRequestResult(BaseModel):
+    match_id: int
+    job_id: int = Field(description="OpenDota's parse job; pass it to get_match_parse_status.")
+    message: str = Field(description="What happens next.")
+
+
+class ParseStatusResult(BaseModel):
+    match_id: int
+    status: ParseStatus = Field(
+        description="queued: waiting for a parser. parsing: being parsed now. parsed: detail "
+        "is ready. failed: the parse ended without data (usually the replay is no longer "
+        "available) or the job ID is unknown. not_requested: unparsed, no parse request known."
+    )
+    job_id: int | None = Field(description="The parse job checked, if one was known.")
+    message: str = Field(description="What it means and what to do next.")

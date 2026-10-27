@@ -16,6 +16,9 @@ from opendota_mcp.models import (
     MatchResult,
     MatchSection,
     MatchSectionResult,
+    ParseRequestResult,
+    ParseStatus,
+    ParseStatusResult,
     PlayerTimings,
     Side,
     Teamfight,
@@ -26,7 +29,7 @@ from opendota_mcp.models.formatting import mmss, utc_datetime
 from opendota_mcp.models.labels import game_mode_name, lobby_type_name, region_name
 from opendota_mcp.objectives import key_moments, match_events, side_of_slot
 from opendota_mcp.reference import Reference, ReferenceStore
-from opendota_mcp.tools.annotations import READ_ONLY
+from opendota_mcp.tools.annotations import READ_ONLY, WRITES
 from opendota_mcp.tools.descriptions import MATCH_ID
 
 SECTIONS: tuple[MatchSection, ...] = get_args(MatchSection)
@@ -37,6 +40,20 @@ UNPARSED_NOTE = (
     "This match isn't parsed, so teamfights, objectives, chat, graphs and timings aren't "
     "available. Offer to request a parse with request_match_parse; it takes a few minutes."
 )
+PARSE_MESSAGES: dict[ParseStatus, str] = {
+    "queued": "Waiting for a parser; check again in a few minutes.",
+    "parsing": "Being parsed now; check again in a minute or two.",
+    "parsed": "Parsed. get_match and get_match_section now have the full detail.",
+    "failed": (
+        "The parse ended without producing data. Usually the replay is no longer available "
+        "(Valve keeps replays only for a few weeks), so requesting it again rarely helps. "
+        "If the job ID was passed in, check it belongs to this match."
+    ),
+    "not_requested": (
+        "The match isn't parsed and no parse request is known for it. If one was made "
+        "earlier, pass its job_id; otherwise request one with request_match_parse."
+    ),
+}
 
 
 def register_match_tools(mcp: FastMCP, api: OpenDotaClient, references: ReferenceStore) -> None:
@@ -44,10 +61,7 @@ def register_match_tools(mcp: FastMCP, api: OpenDotaClient, references: Referenc
         try:
             match = await api.get_match(match_id)
         except MatchNotFoundError:
-            raise ToolError(
-                f"No match with ID {match_id} on OpenDota. Check the ID; a match that just "
-                "ended can take a few minutes to appear."
-            ) from None
+            raise _no_match(match_id) from None
         return match, await references.current()
 
     @mcp.tool(annotations=READ_ONLY)
@@ -139,6 +153,64 @@ def register_match_tools(mcp: FastMCP, api: OpenDotaClient, references: Referenc
                 else None
             ),
         )
+
+    @mcp.tool(annotations=WRITES)
+    async def request_match_parse(
+        match_id: Annotated[int, Field(description=MATCH_ID)],
+    ) -> ParseRequestResult:
+        """Ask OpenDota to parse a match's replay, so teamfights, objectives, chat, graphs
+        and timings become available. Returns at once; the parse itself takes a few minutes.
+
+        Use when get_match says the match isn't parsed and the user wants the detail. Then
+        check progress with get_match_parse_status. Costs as much of the rate limit as 10
+        ordinary calls, so don't repeat it while a parse is pending.
+        """
+        try:
+            job_id = await api.request_parse(match_id)
+        except MatchNotFoundError:
+            raise _no_match(match_id) from None
+        return ParseRequestResult(
+            match_id=match_id,
+            job_id=job_id,
+            message=(
+                "Parse requested. It usually takes a few minutes; check back with "
+                "get_match_parse_status, then use get_match and get_match_section."
+            ),
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_match_parse_status(
+        match_id: Annotated[int, Field(description=MATCH_ID)],
+        job_id: Annotated[
+            int | None,
+            Field(
+                description="The job_id request_match_parse returned. Optional: this "
+                "server remembers its own requests until it restarts."
+            ),
+        ] = None,
+    ) -> ParseStatusResult:
+        """Whether a requested parse is queued, parsing, parsed or failed.
+
+        Use after request_match_parse, when the user asks "is it ready yet". Once parsed,
+        get_match and get_match_section return the detailed data.
+        """
+        try:
+            progress = await api.get_parse_progress(match_id, job_id)
+        except MatchNotFoundError:
+            raise _no_match(match_id) from None
+        return ParseStatusResult(
+            match_id=match_id,
+            status=progress.state,
+            job_id=progress.job_id,
+            message=PARSE_MESSAGES[progress.state],
+        )
+
+
+def _no_match(match_id: int) -> ToolError:
+    return ToolError(
+        f"No match with ID {match_id} on OpenDota. Check the ID; a match that just "
+        "ended can take a few minutes to appear."
+    )
 
 
 def _section(asked: str) -> MatchSection:

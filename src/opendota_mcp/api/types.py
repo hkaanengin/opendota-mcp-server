@@ -443,3 +443,38 @@ class MatchResponse(BaseModel):
 
 
 MATCH = TypeAdapter(MatchResponse)
+
+
+class ParseJobRef(BaseModel):
+    jobId: int
+
+
+class ParseRequestResponse(BaseModel):
+    """`POST /request/{match_id}`: the queued parse job."""
+
+    job: ParseJobRef
+
+
+class ParseJob(BaseModel):
+    """`GET /request/{jobId}` while the job is still in OpenDota's queue."""
+
+    jobId: int
+    attempts: int | None = None
+    next_attempt_time: datetime | None = None
+    """Set a few minutes ahead by the worker that takes the job, and after a failed
+    attempt; none, or a time past, means it is waiting for a worker."""
+
+
+PARSE_REQUEST = TypeAdapter(ParseRequestResponse)
+PARSE_JOB: TypeAdapter[ParseJob | None] = TypeAdapter(ParseJob | None)
+"""`null` once the job is finished (parsed or given up on), or for an unknown job ID."""
+
+ParseState = Literal["queued", "parsing", "parsed", "failed", "not_requested"]
+
+
+class ParseProgress(BaseModel):
+    """Where a Parse request stands, from its job and the Match itself."""
+
+    state: ParseState
+    job_id: int | None
+    """The parse job checked, if one was known."""

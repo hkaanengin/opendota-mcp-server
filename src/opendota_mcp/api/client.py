@@ -32,6 +32,8 @@ from opendota_mcp.api.types import (
     HISTOGRAM,
     ITEMS,
     MATCH,
+    PARSE_JOB,
+    PARSE_REQUEST,
     PATCHES,
     PLAYER,
     PLAYER_COUNTS,
@@ -48,6 +50,7 @@ from opendota_mcp.api.types import (
     HistogramEntry,
     ItemConstant,
     MatchResponse,
+    ParseProgress,
     PatchConstant,
     PlayerCounts,
     PlayerHeroEntry,
@@ -66,6 +69,8 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.opendota.com/api"
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+PARSE_REQUEST_COST = 10
+"""OpenDota counts a parse request as 10 calls against the rate limit."""
 MAX_RETRY_WAIT = 60.0
 """Longest `Retry-After` worth waiting out inside a tool call; beyond it, fail at once."""
 
@@ -148,6 +153,7 @@ class OpenDotaClient:
         self._clock = clock
         self._limiter = RateLimiter(rate_limit_rpm, clock)
         self._cache = ResponseCache(clock)
+        self._parse_jobs: dict[int, int] = {}
         self._http: httpx.AsyncClient | None = None
 
     async def get_records(self, field: str) -> list[RecordEntry]:
@@ -226,18 +232,58 @@ class OpenDotaClient:
         """Each change of the Player's Rank tier that OpenDota recorded."""
         return await self._get(f"/players/{account_id}/ratings", RATINGS, ttl=PLAYER_TTL)
 
-    async def get_match(self, match_id: int) -> MatchResponse:
+    async def get_match(self, match_id: int, *, recheck_unparsed: bool = False) -> MatchResponse:
         """A finished Match. Raises `MatchNotFoundError` for an unknown match ID.
 
         A Parsed match never changes, so it stays cached; an unparsed one may be parsed at
-        any time, so it's kept only briefly.
+        any time, so it's kept only briefly. `recheck_unparsed` refetches a cached unparsed
+        copy, and the fresh one replaces it.
         """
+        reuse = (lambda match: match.parsed) if recheck_unparsed else None
         try:
-            return await self._get(f"/matches/{match_id}", MATCH, ttl=_match_ttl)
+            return await self._get(f"/matches/{match_id}", MATCH, ttl=_match_ttl, reuse=reuse)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != httpx.codes.NOT_FOUND:
                 raise
             raise MatchNotFoundError(match_id) from None
+
+    async def request_parse(self, match_id: int) -> int:
+        """Queue a parse of the Match's replay and return the job ID, without waiting.
+
+        Raises `MatchNotFoundError` when OpenDota doesn't know the match.
+        """
+        path = f"/request/{match_id}"
+        try:
+            payload = await self._send_with_retry("POST", path, None, cost=PARSE_REQUEST_COST)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in (httpx.codes.BAD_REQUEST, httpx.codes.NOT_FOUND):
+                raise
+            raise MatchNotFoundError(match_id) from None
+        job_id = _parse(PARSE_REQUEST, path, payload).job.jobId
+        self._parse_jobs[match_id] = job_id
+        return job_id
+
+    async def get_parse_progress(self, match_id: int, job_id: int | None = None) -> ParseProgress:
+        """Where a parse of the Match stands. Raises `MatchNotFoundError` for an unknown match.
+
+        Checks job `job_id`, else this session's latest request for the match. A job still
+        in OpenDota's queue is `parsing` while a worker holds it (its next attempt is in the
+        future) and `queued` otherwise; a job retrying after a failed attempt also reads as
+        `parsing`. Once the job is gone, the match itself says whether it worked, and a
+        cached unparsed copy is replaced by the fresh one.
+        """
+        if job_id is None:
+            job_id = self._parse_jobs.get(match_id)
+        if job_id is not None:
+            job = await self._fetch(f"/request/{job_id}", PARSE_JOB)
+            if job is not None:
+                retry_at = job.next_attempt_time
+                held = retry_at is not None and retry_at.timestamp() > self._clock.time()
+                return ParseProgress(state="parsing" if held else "queued", job_id=job_id)
+        match = await self.get_match(match_id, recheck_unparsed=True)
+        if match.parsed:
+            return ParseProgress(state="parsed", job_id=job_id)
+        return ParseProgress(state="not_requested" if job_id is None else "failed", job_id=job_id)
 
     # Constants are not response-cached: the reference store keeps them and decides when
     # to refresh, and the items payload alone would crowd the cache.
@@ -273,15 +319,17 @@ class OpenDotaClient:
         *,
         ttl: float | Callable[[T], float | None] | None,
         params: Params | None = None,
+        reuse: Callable[[T], bool] | None = None,
     ) -> T:
         """Fetch, validate and cache a GET response. Only valid responses are cached.
 
         `ttl` is seconds to keep it (`None`: until evicted), or a function of the response
-        when how long it stays fresh depends on what came back.
+        when how long it stays fresh depends on what came back. A cached response `reuse`
+        rejects is fetched again.
         """
         key: Hashable = ("GET", path, tuple(sorted((params or {}).items())))
         cached = self._cache.get(key, _MISSING)
-        if cached is not _MISSING:
+        if cached is not _MISSING and (reuse is None or reuse(cached)):
             logger.debug("GET %s (cached)", path)
             return cached  # type: ignore[no-any-return]
         value = await self._fetch(path, adapter, params)

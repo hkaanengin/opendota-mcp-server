@@ -138,3 +138,63 @@ class HeroBenchmarksResult(BaseModel):
     rank_bracket: str = Field(description='The Rank bracket counted, or "All brackets".')
     role: BenchmarkRole | Literal["All roles"]
     benchmarks: list[HeroBenchmark]
+
+
+class LaneGameLength(BaseModel):
+    up_to: int = Field(
+        description="Game length in seconds. Each row counts only games longer than the "
+        "previous row's."
+    )
+    up_to_mmss: str = Field(description='The same as "MM:SS".')
+    games: int
+    win_rate: float | None = Field(description="Percent of those the hero won.")
+
+
+class LanePerformance(BaseModel):
+    lane: str
+    games: int
+    win_rate: float | None = Field(description="Percent of those the hero won; null with no games.")
+    by_game_length: list[LaneGameLength] = Field(description="Shortest games first.")
+
+
+class HeroLanePerformanceResult(BaseModel):
+    hero: str
+    note: str = Field(description="Where the numbers come from; relay it.")
+    lane_note: str | None = Field(
+        description="How the lane was applied, e.g. a Position mapped to its Lane; relay it. "
+        "Null when every Lane is shown."
+    )
+    lanes: list[LanePerformance]
+
+
+class HeroItemTiming(BaseModel):
+    bought_by: int = Field(
+        description="Game time in seconds. Each row counts only purchases after the previous "
+        "row's time."
+    )
+    bought_by_mmss: str = Field(description='The same as "MM:SS".')
+    games: int
+    win_rate: float | None = Field(description="Percent of those the hero won.")
+
+
+class HeroItemTimingsResult(BaseModel):
+    hero: str
+    item: str
+    note: str = Field(description="Where the numbers come from; relay it.")
+    timings: list[HeroItemTiming] = Field(description="Earliest purchases first.")
+
+
+class HeroDurationBucket(BaseModel):
+    start: int = Field(description="Shortest game counted, in seconds.")
+    start_mmss: str
+    end: int = Field(description="Games this long, in seconds, count in the next bucket.")
+    end_mmss: str
+    games: int
+    win_rate: float | None = Field(description="Percent of those the hero won.")
+
+
+class HeroDurationPerformanceResult(BaseModel):
+    hero: str
+    data_source: DataSource
+    note: str = Field(description="Where the numbers come from; relay it.")
+    durations: list[HeroDurationBucket] = Field(description="Shortest games first.")

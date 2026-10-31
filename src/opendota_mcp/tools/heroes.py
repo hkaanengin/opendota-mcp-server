@@ -11,6 +11,7 @@ from opendota_mcp.api.types import (
     BenchmarkPoint,
     BenchmarkRole,
     HeroConstant,
+    HeroLaneRoleEntry,
     HeroStatsEntry,
 )
 from opendota_mcp.models import (
@@ -19,7 +20,12 @@ from opendota_mcp.models import (
     HeroAttributes,
     HeroBenchmark,
     HeroBenchmarksResult,
+    HeroDurationBucket,
+    HeroDurationPerformanceResult,
     HeroItemPopularityResult,
+    HeroItemTiming,
+    HeroItemTimingsResult,
+    HeroLanePerformanceResult,
     HeroMatchup,
     HeroMatchupsResult,
     HeroMeta,
@@ -27,13 +33,22 @@ from opendota_mcp.models import (
     HeroResult,
     HeroStats,
     ItemPurchases,
+    LaneGameLength,
+    LanePerformance,
     PrimaryAttribute,
 )
-from opendota_mcp.models.formatting import stat_name, win_rate
+from opendota_mcp.models.formatting import mmss, stat_name, win_rate
 from opendota_mcp.reference import Reference, ReferenceStore
-from opendota_mcp.resolve import medal_name, resolve_hero, resolve_rank_bracket
+from opendota_mcp.resolve import (
+    LANE_NAMES,
+    medal_name,
+    resolve_hero,
+    resolve_item,
+    resolve_lane,
+    resolve_rank_bracket,
+)
 from opendota_mcp.tools.annotations import READ_ONLY
-from opendota_mcp.tools.descriptions import HERO, RANK_BRACKET
+from opendota_mcp.tools.descriptions import HERO, ITEM, LANE, RANK_BRACKET
 
 PRIMARY_ATTRIBUTES: dict[str, PrimaryAttribute] = {
     "str": "Strength",
@@ -59,6 +74,18 @@ PRO_MATCHES_NOTE = (
     "From Pro matches only (games in professional leagues), not Public matches, so it "
     "shows pro trends, which can differ from pubs."
 )
+SCENARIO_NOTE = (
+    "From OpenDota's sample of Parsed matches, so a fraction of all games, and only those "
+    "with a replay parsed."
+)
+LANE_PERFORMANCE_NOTE = f"{SCENARIO_NOTE} Games over 90:00 aren't counted."
+ITEM_TIMINGS_NOTE = (
+    f"{SCENARIO_NOTE} Purchases after 30:00 aren't counted. Win rates show how games went when "
+    "the item was bought at that time, not what the timing caused: a hero that's already "
+    "winning buys sooner."
+)
+DURATION_BUCKET_SECONDS = 300
+"""OpenDota groups `/heroes/{id}/durations` into 5-minute bins."""
 
 
 def register_hero_tools(mcp: FastMCP, api: OpenDotaClient, references: ReferenceStore) -> None:
@@ -212,6 +239,113 @@ def register_hero_tools(mcp: FastMCP, api: OpenDotaClient, references: Reference
                 for stat, points in benchmarks.result.items()
             ],
         )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_hero_lane_performance(
+        hero: Annotated[str | int, Field(description=HERO)],
+        lane: Annotated[str | int | None, Field(description=LANE)] = None,
+    ) -> HeroLanePerformanceResult:
+        """How a hero does in each Lane: games and win rate, overall and by game length.
+
+        Use for "how does Pudge do as pos 4", "is Invoker better mid or off lane", "which lane
+        is best for Dragon Knight".
+        """
+        reference = await references.current()
+        found = resolve_hero(hero, reference)
+        lane_filter = None if lane is None else resolve_lane(lane)
+        entries = await api.get_hero_lane_roles(found.id)
+        shown = list(LANE_NAMES) if lane_filter is None else [lane_filter.lane_role]
+        return HeroLanePerformanceResult(
+            hero=found.localized_name,
+            note=LANE_PERFORMANCE_NOTE,
+            lane_note=None if lane_filter is None else lane_filter.note,
+            lanes=[_lane_performance(lane_role, entries) for lane_role in shown],
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_hero_item_timings(
+        hero: Annotated[str | int, Field(description=HERO)],
+        item: Annotated[str | int, Field(description=ITEM)],
+    ) -> HeroItemTimingsResult:
+        """A hero's win rate by when an item was bought, for items costing at least 1400 gold
+        bought in the first 30 minutes.
+
+        Use for "when does Battle Fury pay off on Anti-Mage", "how late is too late for BKB on
+        Lina", "is a 12-minute Radiance good on Spectre".
+        """
+        reference = await references.current()
+        found = resolve_hero(hero, reference)
+        key = resolve_item(item, reference)
+        entries = await api.get_hero_item_timings(found.id, key)
+        if not entries:
+            raise ToolError(
+                f"OpenDota has no timings for {reference.item_name(key)} on "
+                f"{found.localized_name}: it only tracks items costing at least 1400 gold, and "
+                "this one may not be bought often enough on this hero. Try a costlier item; "
+                "get_hero_item_popularity shows what's commonly bought on it."
+            )
+        return HeroItemTimingsResult(
+            hero=found.localized_name,
+            item=reference.item_name(key),
+            note=ITEM_TIMINGS_NOTE,
+            timings=[
+                HeroItemTiming(
+                    bought_by=entry.time,
+                    bought_by_mmss=mmss(entry.time),
+                    games=entry.games,
+                    win_rate=win_rate(entry.wins, entry.games),
+                )
+                for entry in sorted(entries, key=lambda entry: entry.time)
+            ],
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def get_hero_duration_performance(
+        hero: Annotated[str | int, Field(description=HERO)],
+    ) -> HeroDurationPerformanceResult:
+        """A hero's win rate by game length, in 5-minute buckets, from Pro matches only.
+
+        Use for "is Spectre a late-game hero", "is Anti-Mage stronger in short or long games",
+        "when does Tinker fall off".
+        """
+        reference = await references.current()
+        found = resolve_hero(hero, reference)
+        entries = await api.get_hero_durations(found.id)
+        return HeroDurationPerformanceResult(
+            hero=found.localized_name,
+            data_source="Pro matches",
+            note=PRO_MATCHES_NOTE,
+            durations=[
+                HeroDurationBucket(
+                    start=entry.duration_bin,
+                    start_mmss=mmss(entry.duration_bin),
+                    end=entry.duration_bin + DURATION_BUCKET_SECONDS,
+                    end_mmss=mmss(entry.duration_bin + DURATION_BUCKET_SECONDS),
+                    games=entry.games_played,
+                    win_rate=win_rate(entry.wins, entry.games_played),
+                )
+                for entry in sorted(entries, key=lambda entry: entry.duration_bin)
+            ],
+        )
+
+
+def _lane_performance(lane_role: int, entries: list[HeroLaneRoleEntry]) -> LanePerformance:
+    in_lane = sorted((e for e in entries if e.lane_role == lane_role), key=lambda e: e.time)
+    games = sum(entry.games for entry in in_lane)
+    return LanePerformance(
+        lane=LANE_NAMES[lane_role],
+        games=games,
+        win_rate=win_rate(sum(entry.wins for entry in in_lane), games),
+        by_game_length=[
+            LaneGameLength(
+                up_to=entry.time,
+                up_to_mmss=mmss(entry.time),
+                games=entry.games,
+                win_rate=win_rate(entry.wins, entry.games),
+            )
+            for entry in in_lane
+        ],
+    )
 
 
 def _bracket(rank_bracket: str | int | None) -> int | None:

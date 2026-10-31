@@ -28,7 +28,10 @@ from opendota_mcp.api.ratelimit import RateLimiter, seconds_until_next_window
 from opendota_mcp.api.types import (
     AGHS_DESC,
     BENCHMARKS,
+    HERO_DURATIONS,
     HERO_ITEM_POPULARITY,
+    HERO_ITEM_TIMINGS,
+    HERO_LANE_ROLES,
     HERO_LORE,
     HERO_MATCHUPS,
     HERO_STATS,
@@ -53,7 +56,10 @@ from opendota_mcp.api.types import (
     BenchmarkRole,
     HeroBenchmarks,
     HeroConstant,
+    HeroDurationEntry,
     HeroItemPopularity,
+    HeroItemTimingEntry,
+    HeroLaneRoleEntry,
     HeroMatchupEntry,
     HeroStatsEntry,
     HistogramEntry,
@@ -194,6 +200,26 @@ class OpenDotaClient:
         if role is not None:
             params["role"] = role
         return await self._get("/benchmarks", BENCHMARKS, ttl=HERO_WIDE_TTL, params=params)
+
+    async def get_hero_lane_roles(self, hero_id: int) -> list[HeroLaneRoleEntry]:
+        """The hero's results per Lane and game length, from a sample of Parsed matches."""
+        return await self._get(
+            "/scenarios/laneRoles", HERO_LANE_ROLES, ttl=HERO_WIDE_TTL, params={"hero_id": hero_id}
+        )
+
+    async def get_hero_item_timings(self, hero_id: int, item: str) -> list[HeroItemTimingEntry]:
+        """The hero's results by when internal item `item` was bought, from a sample of Parsed
+        matches. Empty for items costing under 1400 gold."""
+        return await self._get(
+            "/scenarios/itemTimings",
+            HERO_ITEM_TIMINGS,
+            ttl=HERO_WIDE_TTL,
+            params={"hero_id": hero_id, "item": item},
+        )
+
+    async def get_hero_durations(self, hero_id: int) -> list[HeroDurationEntry]:
+        """The hero's Pro match results per 5-minute game-length bin."""
+        return await self._get(f"/heroes/{hero_id}/durations", HERO_DURATIONS, ttl=HERO_WIDE_TTL)
 
     async def search_players(self, name: str) -> list[SearchResult]:
         """Players whose Persona name contains `name`. Fewer than 3 characters finds nothing."""

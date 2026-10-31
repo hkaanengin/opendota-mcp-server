@@ -8,6 +8,10 @@ ITEM = (
     'The item: its name ("Black King Bar"), a community nickname ("bkb", "aghs shard"), '
     "its OpenDota item ID, or a close spelling."
 )
+LANE = (
+    'Optional: one lane ("safe lane", "mid", "off lane", "jungle") or a position ("pos 1" to '
+    '"pos 5", "carry", "soft support"), which is mapped to its lane. Leave out for every lane.'
+)
 PLAYER = (
     "The player: their Account ID (the Friend ID shown in the Dota client), a player alias "
     "configured on this server, or their exact current Steam display name. Prefer the ID "

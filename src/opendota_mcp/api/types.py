@@ -549,7 +549,40 @@ class HeroBenchmarks(BaseModel):
     result: dict[str, list[BenchmarkPoint]]
 
 
+class HeroLaneRoleEntry(BaseModel):
+    """One entry of `/scenarios/laneRoles`: results in games of up to `time` seconds.
+
+    OpenDota sends `games` and `wins` as strings.
+    """
+
+    lane_role: int
+    time: int
+    games: int
+    wins: int
+
+
+class HeroItemTimingEntry(BaseModel):
+    """One entry of `/scenarios/itemTimings`: results when bought by `time` seconds, and after
+    the previous bucket. OpenDota sends `games` and `wins` as strings."""
+
+    time: int
+    games: int
+    wins: int
+
+
+class HeroDurationEntry(BaseModel):
+    """One entry of `/heroes/{hero_id}/durations`: Pro matches in a 5-minute game-length bin."""
+
+    duration_bin: int
+    """The bin's lower bound, in seconds."""
+    games_played: int
+    wins: int
+
+
 HERO_STATS = TypeAdapter(list[HeroStatsEntry])
 HERO_MATCHUPS = TypeAdapter(list[HeroMatchupEntry])
 HERO_ITEM_POPULARITY = TypeAdapter(HeroItemPopularity)
 BENCHMARKS = TypeAdapter(HeroBenchmarks)
+HERO_LANE_ROLES = TypeAdapter(list[HeroLaneRoleEntry])
+HERO_ITEM_TIMINGS = TypeAdapter(list[HeroItemTimingEntry])
+HERO_DURATIONS = TypeAdapter(list[HeroDurationEntry])

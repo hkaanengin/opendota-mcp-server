@@ -1,9 +1,9 @@
 """OpenDota response shapes, as OpenDota sends them (IDs, epoch seconds)."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, model_validator
 
 RECORD_FIELDS = (
     "kills",
@@ -478,3 +478,78 @@ class ParseProgress(BaseModel):
     state: ParseState
     job_id: int | None
     """The parse job checked, if one was known."""
+
+
+RANK_BRACKETS = range(1, 9)
+"""OpenDota's Rank bracket numbers: 1 Herald … 8 Immortal."""
+
+
+class HeroStatsEntry(BaseModel):
+    """One hero of `/heroStats`: public games over the last 7 days, and recent Pro matches.
+
+    OpenDota sends each bracket as flat `{n}_pick`/`{n}_win` keys; they're gathered into
+    `brackets`. `pub_pick`/`pub_win` cover every bracket together.
+    """
+
+    id: int
+    pub_pick: int
+    pub_win: int
+    pro_pick: int = 0
+    pro_win: int = 0
+    pro_ban: int = 0
+    brackets: dict[int, CountEntry]
+    """Rank bracket → public games and wins in it."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _gather_brackets(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "brackets" not in data:
+            data = {
+                **data,
+                "brackets": {
+                    n: {"games": data.get(f"{n}_pick", 0), "win": data.get(f"{n}_win", 0)}
+                    for n in RANK_BRACKETS
+                },
+            }
+        return data
+
+
+class HeroMatchupEntry(BaseModel):
+    """One entry of `/heroes/{hero_id}/matchups`: Pro matches against `hero_id`."""
+
+    hero_id: int
+    games_played: int
+    wins: int
+    """Games the hero asked about won."""
+
+
+class HeroItemPopularity(BaseModel):
+    """`/heroes/{hero_id}/itemPopularity`: item ID → times bought in Pro matches, per phase."""
+
+    start_game_items: dict[int, int] = {}
+    early_game_items: dict[int, int] = {}
+    mid_game_items: dict[int, int] = {}
+    late_game_items: dict[int, int] = {}
+
+
+BenchmarkRole = Literal["core", "support"]
+"""`/benchmarks` role: OpenDota estimates it from farm within each team."""
+
+
+class BenchmarkPoint(BaseModel):
+    percentile: float
+    """0.1 … 0.99."""
+    value: int | float
+
+
+class HeroBenchmarks(BaseModel):
+    """`/benchmarks`: stat → the value reached at each percentile of the hero's games."""
+
+    hero_id: int
+    result: dict[str, list[BenchmarkPoint]]
+
+
+HERO_STATS = TypeAdapter(list[HeroStatsEntry])
+HERO_MATCHUPS = TypeAdapter(list[HeroMatchupEntry])
+HERO_ITEM_POPULARITY = TypeAdapter(HeroItemPopularity)
+BENCHMARKS = TypeAdapter(HeroBenchmarks)

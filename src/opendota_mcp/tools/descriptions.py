@@ -18,3 +18,7 @@ FILTERS = (
     'game_mode is "turbo". The response says what was counted; relay its notes.'
 )
 MATCH_ID = "The match ID, e.g. from get_player_matches or the Dota client."
+RANK_BRACKET = (
+    'Optional: one medal\'s games only, by name ("divine") or number (1 Herald … 8 Immortal). '
+    "Leave out for all brackets combined."
+)

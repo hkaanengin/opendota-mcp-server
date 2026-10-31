@@ -21,7 +21,7 @@ def register_all_tools(
     player_aliases: Mapping[str, int],
     clock: Clock,
 ) -> None:
-    register_hero_tools(mcp, references)
+    register_hero_tools(mcp, api, references)
     register_item_tools(mcp, references)
     register_match_tools(mcp, api, references)
     register_player_tools(mcp, api, references, player_aliases, clock)

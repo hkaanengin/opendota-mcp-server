@@ -32,6 +32,13 @@ STAT_NAMES: dict[str, str] = {
     "stomp": "Biggest gold lead (won games)",
     "loss": "Biggest gold deficit (lost games)",
     "actions_per_min": "Actions per minute",
+    "kills_per_min": "Kills per minute",
+    "deaths_per_min": "Deaths per minute",
+    "assists_per_min": "Assists per minute",
+    "last_hits_per_min": "Last hits per minute",
+    "denies_per_min": "Denies per minute",
+    "hero_damage_per_min": "Hero damage per minute",
+    "hero_healing_per_min": "Hero healing per minute",
 }
 """OpenDota stat field → how to show it."""
 

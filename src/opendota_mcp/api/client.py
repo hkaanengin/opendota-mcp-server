@@ -27,7 +27,11 @@ from opendota_mcp.api.cache import (
 from opendota_mcp.api.ratelimit import RateLimiter, seconds_until_next_window
 from opendota_mcp.api.types import (
     AGHS_DESC,
+    BENCHMARKS,
+    HERO_ITEM_POPULARITY,
     HERO_LORE,
+    HERO_MATCHUPS,
+    HERO_STATS,
     HEROES,
     HISTOGRAM,
     ITEMS,
@@ -46,7 +50,12 @@ from opendota_mcp.api.types import (
     SEARCH,
     WIN_LOSS,
     AghsDescConstant,
+    BenchmarkRole,
+    HeroBenchmarks,
     HeroConstant,
+    HeroItemPopularity,
+    HeroMatchupEntry,
+    HeroStatsEntry,
     HistogramEntry,
     ItemConstant,
     MatchResponse,
@@ -159,6 +168,32 @@ class OpenDotaClient:
     async def get_records(self, field: str) -> list[RecordEntry]:
         """Top all-time performances in a record stat (see `RECORD_FIELDS`)."""
         return await self._get(f"/records/{field}", _records, ttl=HERO_WIDE_TTL)
+
+    async def get_hero_stats(self) -> list[HeroStatsEntry]:
+        """Every hero's public picks and wins per Rank bracket, plus Pro match picks and bans."""
+        return await self._get("/heroStats", HERO_STATS, ttl=HERO_WIDE_TTL)
+
+    async def get_hero_matchups(self, hero_id: int) -> list[HeroMatchupEntry]:
+        """The hero's Pro match results against each opponent hero."""
+        return await self._get(f"/heroes/{hero_id}/matchups", HERO_MATCHUPS, ttl=HERO_WIDE_TTL)
+
+    async def get_hero_item_popularity(self, hero_id: int) -> HeroItemPopularity:
+        """Items bought on the hero in Pro matches, per game phase."""
+        return await self._get(
+            f"/heroes/{hero_id}/itemPopularity", HERO_ITEM_POPULARITY, ttl=HERO_WIDE_TTL
+        )
+
+    async def get_hero_benchmarks(
+        self, hero_id: int, bracket: int | None = None, role: BenchmarkRole | None = None
+    ) -> HeroBenchmarks:
+        """Stat percentiles over the hero's public games, optionally for one Rank bracket
+        (1-8) and one role (`core` or `support`)."""
+        params: dict[str, int | str] = {"hero_id": hero_id}
+        if bracket is not None:
+            params["bracket"] = bracket
+        if role is not None:
+            params["role"] = role
+        return await self._get("/benchmarks", BENCHMARKS, ttl=HERO_WIDE_TTL, params=params)
 
     async def search_players(self, name: str) -> list[SearchResult]:
         """Players whose Persona name contains `name`. Fewer than 3 characters finds nothing."""
